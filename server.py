@@ -11,6 +11,7 @@ True -- and there is no BIND override to expose it on a LAN. See README -> Priva
 import json
 import mimetypes
 import os
+import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,6 +32,15 @@ def _safe_slug(slug):
     if not slug or "/" in slug or "\\" in slug or slug.startswith(".") or ".." in slug:
         return None
     return slug
+
+
+def _find(text, term):
+    """Case-insensitive search where any whitespace run in `term` matches any whitespace
+    run in `text` -- resume lines wrap mid-phrase, so "78K+ community" may span a newline."""
+    words = term.split()
+    if not words:
+        return None
+    return re.search(r"\s+".join(map(re.escape, words)), text, re.IGNORECASE)
 
 
 def _safe_name(name):
@@ -272,12 +282,12 @@ class Handler(BaseHTTPRequestHandler):
                 f = d / fn
                 if f.exists():
                     hay[key] = f.read_text(encoding="utf-8", errors="replace")
-            where = [k for k, v in hay.items() if term in v.lower()]
+            where = [k for k, v in hay.items() if _find(v, term)]
             if where:
                 snippet = ""
                 for k in ("resume", "jd"):
                     if k in where:
-                        i = hay[k].lower().index(term)
+                        i = _find(hay[k], term).start()
                         snippet = hay[k][max(0, i - 60):i + 120].replace("\n", " ")
                         break
                 hits.append({"slug": rec["slug"], "where": where, "snippet": snippet,

@@ -26,10 +26,7 @@ def extract(pdf_path):
         reader = PdfReader(str(pdf_path))
         chunks = []
         for page in reader.pages:
-            try:
-                chunks.append(page.extract_text() or "")
-            except Exception:
-                chunks.append("")
+            chunks.append(_page_text(page))
         text = normalize("\n".join(chunks))
         pages = len(reader.pages)
     except Exception as e:
@@ -41,6 +38,19 @@ def extract(pdf_path):
                 "warning": f"only {len(text)} characters of text -- this looks like a scanned "
                            f"or image-based PDF, so search and tailoring will not work on it"}
     return {"text": text, "pages": pages, "ok": True, "readable": True, "warning": None}
+
+
+def _page_text(page):
+    """Layout mode first: Google Docs exports draw every word in its own text block, and
+    pypdf's default mode emits each one on its own line -- phrase search then never
+    matches. Layout mode rebuilds lines from glyph positions. Plain mode is the fallback
+    for the PDFs layout mode chokes on."""
+    for mode in ("layout", "plain"):
+        try:
+            return page.extract_text(extraction_mode=mode) or ""
+        except Exception:
+            continue
+    return ""
 
 
 def normalize(text):
