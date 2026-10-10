@@ -1,0 +1,52 @@
+import datetime as dt
+
+from lib import store
+
+
+def test_slug_strips_vietnamese_diacritics_and_punctuation():
+    s = store.make_slug({"company": "CÔNG TY TNHH ROTT VIỆT NAM",
+                         "title": "[Tuyển Gấp] HR & Admin / Nhân Viên",
+                         "posted": "2026-10"})
+    assert s.startswith("2026-10-")
+    assert all(c.isalnum() or c == "-" for c in s)      # safe as a path component
+    assert "/" not in s and " " not in s
+
+
+def test_d_stroke_becomes_d():
+    assert store.slugify("Đà Nẵng") == "da-nang"       # NFD alone leaves U+0111
+
+
+def test_needs_attention_follow_up_overdue():
+    rec = {"status": "applied", "follow_up_on": "2026-01-01",
+           "events": [{"on": "2026-01-01", "type": "applied"}]}
+    assert "follow-up due" in store.needs_attention(rec, dt.date(2026, 1, 11))
+
+
+def test_needs_attention_stale_open_application():
+    rec = {"status": "screening", "events": [{"on": "2026-01-01", "type": "applied"}],
+           "created_on": "2026-01-01"}
+    why = store.needs_attention(rec, dt.date(2026, 1, 20))
+    assert why and "no movement" in why
+
+
+def test_closed_applications_never_nag():
+    rec = {"status": "rejected", "follow_up_on": "2020-01-01", "created_on": "2020-01-01"}
+    assert store.needs_attention(rec, dt.date(2026, 1, 1)) is None
+
+
+def test_recent_activity_is_quiet():
+    today = dt.date(2026, 1, 20)
+    rec = {"status": "applied", "events": [{"on": "2026-01-19", "type": "note"}]}
+    assert store.needs_attention(rec, today) is None
+
+
+def test_dashboard_counts_and_sorts():
+    recs = [
+        {"slug": "a", "status": "applied", "created_on": "2026-01-01", "position": {}},
+        {"slug": "b", "status": "offer", "created_on": "2026-01-18", "position": {}},
+        {"slug": "c", "status": "draft", "created_on": "2026-01-19", "position": {}},
+    ]
+    d = store.dashboard(recs, dt.date(2026, 1, 20))
+    assert d["total"] == 3 and d["by_status"]["applied"] == 1
+    assert d["open"] == 2                                   # offer is not an open status
+    assert [a["slug"] for a in d["attention"]] == ["a", "c"]  # stalest first

@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+server.log
+*.tmp
+.DS_Store
+.claude/
+# NOTE: applications/ and resumes/ are intentionally NOT ignored --
+# the PDFs and their data.yaml sidecars are the point of this repo.
+# Keep the GitHub remote PRIVATE. See README -> Privacy.

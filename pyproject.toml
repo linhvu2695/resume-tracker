@@ -1,0 +1,16 @@
+[project]
+name = "resume-tracker"
+version = "0"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml",
+    "pypdf>=5",      # text extraction from resume PDFs (pure Python, no system deps)
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["."]
