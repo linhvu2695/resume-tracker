@@ -4,7 +4,7 @@
         data.yaml      the record (status, dates, position, events)
         <resume>.pdf   what you actually attached to the email
         resume.txt     auto-extracted text (search / diff / tailoring)
-        jd.md          the job description, pasted by hand
+        jd.md          the job description, imported with the posting
 
 The PDF filename stays human-readable because you re-attach it from disk, but it
 carries no meaning the app depends on -- data.yaml is the source of truth. That
@@ -25,6 +25,7 @@ APPS = BASE / "applications"
 STATUSES = ["draft", "applied", "screening", "interview", "offer", "rejected", "withdrawn"]
 OPEN_STATUSES = {"draft", "applied", "screening", "interview"}
 STALE_AFTER_DAYS = 10      # no movement for this long while open -> needs a nudge
+FOLLOW_UP_AFTER_DAYS = 7   # marking a record applied schedules a follow-up this far out
 
 
 def slugify(text, maxlen=40):
@@ -60,6 +61,20 @@ def new_application(position, status="draft", applied_on=None):
         "contacts": [],
         "notes": "",
     }
+
+
+def set_status(rec, new, on):
+    """Move `rec` to `new` as of date `on`, logging the transition. Applying stamps
+    applied_on and schedules a follow-up, unless the user already chose one."""
+    if new != rec.get("status"):
+        rec.setdefault("events", []).append(
+            {"on": on.isoformat(), "type": "status", "from": rec.get("status"), "to": new})
+    rec["status"] = new
+    if new == "applied":
+        rec["applied_on"] = rec.get("applied_on") or on.isoformat()
+        if not rec.get("follow_up_on"):
+            rec["follow_up_on"] = (on + _dt.timedelta(days=FOLLOW_UP_AFTER_DAYS)).isoformat()
+    return rec
 
 
 def path_for(slug):
@@ -133,7 +148,12 @@ def needs_attention(rec, as_of=None):
         except ValueError:
             pass
     if rec.get("status") == "draft":
-        return "draft - not sent yet"
+        past = days_since((rec.get("position") or {}).get("deadline"), as_of)
+        if past is None:
+            return "draft - not sent yet"
+        return ("draft - posting closed" if past > 0 else
+                "draft - posting closes today" if past == 0 else
+                f"draft - posting closes in {-past}d")
     idle = days_since(last_activity(rec), as_of)
     if idle is not None and idle >= STALE_AFTER_DAYS:
         return f"no movement in {idle}d"

@@ -13,6 +13,7 @@ import mimetypes
 import os
 import re
 import sys
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -159,9 +160,10 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._json({"error": f"could not fetch that URL: {e}"}, 502)
             pos.pop("_server_rendered_chars", None)
-            return self._json({"position": pos,
-                               "note": "VietnamWorks renders the job body in the browser, so the "
-                                       "description is not importable -- paste it into the JD box."})
+            jd = pos.pop("jd", None)
+            return self._json({"position": pos, "jd": jd,
+                               "note": None if jd else "The job description could not be read "
+                                                       "from that page -- paste it into the JD box."})
 
         if p == "/api/application":                      # create
             try:
@@ -177,8 +179,12 @@ class Handler(BaseHTTPRequestHandler):
                 while (APPS / f"{slug}-{n}" / "data.yaml").exists():
                     n += 1
                 slug = f"{slug}-{n}"                     # two applications to one company
-            rec = store.new_application(pos, status=body.get("status") or "draft",
-                                        applied_on=body.get("applied_on"))
+            rec = store.new_application(pos)
+            status = body.get("status") or "draft"
+            if status not in store.STATUSES:
+                return self._json({"error": f"status must be one of {store.STATUSES}"}, 400)
+            if status != "draft":
+                store.set_status(rec, status, date.today())
             store.save(slug, rec)
             if body.get("jd"):
                 (APPS / slug / "jd.md").write_text(body["jd"], encoding="utf-8")
@@ -217,12 +223,7 @@ class Handler(BaseHTTPRequestHandler):
             new = body.get("status")
             if new not in store.STATUSES:
                 return self._json({"error": f"status must be one of {store.STATUSES}"}, 400)
-            if new != rec.get("status"):
-                rec.setdefault("events", []).append(
-                    {"on": store.today(), "type": "status", "from": rec.get("status"), "to": new})
-            rec["status"] = new
-            if new == "applied" and not rec.get("applied_on"):
-                rec["applied_on"] = store.today()
+            store.set_status(rec, new, date.today())
         elif action == "event":
             text = (body.get("text") or "").strip()
             if not text:

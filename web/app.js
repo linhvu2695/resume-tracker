@@ -147,7 +147,10 @@ register('applications', 'Applications', async sec => {
   ]));
 });
 
-/* ---------------- New ---------------- */
+/* ---------------- New ----------------
+   Normal path: on a VietnamWorks job page, click the "Save to tracker" bookmark. It opens
+   /new?url=<that page>; the import runs by itself and fills everything, JD included.
+   Nothing is created until Save is clicked, so no other site can write records here. */
 register('new', 'New', async sec => {
   $('#hdr').textContent = '';
   const url = el('input', { placeholder: 'Paste a VietnamWorks job URL, then press Import' });
@@ -157,33 +160,45 @@ register('new', 'New', async sec => {
     f[k] = el('input', { placeholder: ph || '' });
     return el('div', {}, [el('label', {}, label), f[k]]);
   };
+  f.applied = el('input', { type: 'checkbox' });
+  f.pdf = el('input', { type: 'file', accept: 'application/pdf' });
   const form = el('div', { class: 'card' }, [
     field('title', 'Job title *'), field('company', 'Company *'),
     field('location', 'Location'), field('salary_raw', 'Salary'),
-    el('label', {}, 'Job description (paste it — see note)'),
-    f.jd = el('textarea', { placeholder: 'Paste the responsibilities / requirements here.' }),
+    el('label', {}, 'Resume to send (PDF)'), f.pdf,
+    el('label', {}, 'Job description'),
+    f.jd = el('textarea', { placeholder: 'Filled in by Import. Paste it here if the import could not read it.' }),
+    el('label', { class: 'row' }, [f.applied, 'I have already applied']),
   ]);
   let imported = null;
 
+  const doImport = async () => {
+    msg.textContent = ''; msg.className = '';
+    if (!url.value.trim()) return;
+    msg.className = 'muted sm'; msg.textContent = 'importing…';
+    try {
+      const d = await api('/api/import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.value.trim() })
+      });
+      imported = d.position;
+      f.title.value = d.position.title || '';
+      f.company.value = d.position.company || '';
+      f.location.value = d.position.location || '';
+      f.salary_raw.value = (d.position.salary || {}).raw || '';
+      if (d.jd) f.jd.value = d.jd;
+      msg.className = d.note ? 'warn' : 'muted sm';
+      msg.textContent = d.note || ('Imported' + (d.position.deadline ? ` — posting closes ${d.position.deadline}` : '') + '. Pick the resume and save.');
+    } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
+  };
+
+  const bookmarklet = `javascript:void(window.open('${location.origin}/new?url='+encodeURIComponent(location.href),'_blank'))`;
+  sec.append(el('div', { class: 'card muted sm' }, [
+    'Drag this to your bookmarks bar, then click it on any VietnamWorks job page: ',
+    el('a', { href: bookmarklet, class: 'btn', onclick: e => e.preventDefault() }, '＋ Save to tracker')
+  ]));
   sec.append(el('div', { class: 'card' }, [
-    el('div', { class: 'row' }, [url, el('button', {
-      class: 'btn', onclick: async () => {
-        msg.textContent = ''; msg.className = '';
-        if (!url.value.trim()) return;
-        try {
-          const d = await api('/api/import', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: url.value.trim() })
-          });
-          imported = d.position;
-          f.title.value = d.position.title || '';
-          f.company.value = d.position.company || '';
-          f.location.value = d.position.location || '';
-          f.salary_raw.value = (d.position.salary || {}).raw || '';
-          msg.className = 'warn'; msg.textContent = d.note;
-        } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
-      }
-    }, 'Import')])
+    el('div', { class: 'row' }, [url, el('button', { class: 'btn', onclick: doImport }, 'Import')])
   ]), msg, form);
 
   sec.append(el('button', {
@@ -198,12 +213,27 @@ register('new', 'New', async sec => {
       try {
         const d = await api('/api/application', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ position, jd: f.jd.value, status: 'draft' })
+          body: JSON.stringify({ position, jd: f.jd.value, status: f.applied.checked ? 'applied' : 'draft' })
         });
+        const file = f.pdf.files[0];
+        if (file) {
+          try {
+            await api(`/api/application/${d.slug}/upload?name=${encodeURIComponent(file.name)}`,
+              { method: 'POST', body: await file.arrayBuffer() });
+          } catch (e) { alert(`Saved, but the resume upload failed: ${e.message}`); }
+        }
         go('detail', d.slug);
       } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
     }
-  }, 'Create application'));
+  }, 'Save application'));
+
+  // Arrived from the bookmark: import straight away, then drop ?url= from the address bar.
+  const incoming = new URLSearchParams(location.search).get('url');
+  if (incoming) {
+    history.replaceState(history.state, '', '/new');
+    url.value = incoming;
+    await doImport();
+  }
 });
 
 /* ---------------- Detail ---------------- */

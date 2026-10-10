@@ -49,3 +49,64 @@ def test_salary_shapes():
 def test_missing_meta_does_not_explode():
     p = parse("<html><head></head></html>", "https://x/a-1-jv")
     assert p["source_id"] == "1" and "title" not in p
+
+
+# ---- the job body, embedded as Next.js flight data -------------------------------
+
+def flight_page(rows, splits=(57,)):
+    """Wrap raw flight text the way the live page does: chunked across several
+    self.__next_f.push([1,"..."]) script tags, each a JSON-escaped string."""
+    import json
+    cuts = [0, *splits, len(rows)]
+    return "".join('<script>self.__next_f.push([1,%s])</script>' % json.dumps(rows[a:b])
+                   for a, b in zip(cuts, cuts[1:]))
+
+
+def job_rows(desc="<p>• Viết nội dung</p><p>• Quản lý <b>fanpage</b></p>",
+             req="<p>• Tiếng Anh tốt</p>", form="NFC"):
+    import json
+    desc, req = unicodedata.normalize(form, desc), unicodedata.normalize(form, req)
+    job = {"jobId": 2112562, "jobTitle": "Nhân Viên Marketing", "jobDescription": desc,
+           "jobRequirement": "$1f", "benefits": "$20", "expiredOn": "2026-10-28T23:59:59+07:00",
+           "emailAddress": "hr@rott.example"}
+    req_bytes = len(req.encode("utf-8"))
+    # A T-row is "<id>:T<hex byte length>,<text>" with NO newline after it -- the next
+    # row starts immediately. Its length counts UTF-8 bytes, not characters.
+    benefits = unicodedata.normalize(
+        form, '20:[{"benefitNameVI":"Thưởng","benefitValue":"Thưởng KPI<br/>Thưởng Tết"}]\n')
+    return ('0:["$","html",null,{}]\n'
+            '5:["$","div",null,{"children":["$","section",null,{"job":%s}]}]\n'
+            '1f:T%x,%s%s'
+            % (json.dumps(job, ensure_ascii=False), req_bytes, req, benefits))
+
+
+def test_job_description_comes_from_flight_data():
+    p = parse(flight_page(job_rows()), "https://www.vietnamworks.com/x-2112562-jv")
+    assert p["jd"] == ("## Description\n• Viết nội dung\n• Quản lý fanpage\n\n"
+                       "## Requirements\n• Tiếng Anh tốt\n\n"
+                       "## Benefits\n- Thưởng: Thưởng KPI\n  Thưởng Tết")
+    assert p["deadline"] == "2026-10-28"
+    assert p["contact_email"] == "hr@rott.example"
+
+
+def test_flight_text_row_length_is_bytes_and_split_across_pushes():
+    """Multi-byte Vietnamese makes byte and character lengths differ; reading the
+    T-row by characters would swallow the start of the next row."""
+    req = "<p>" + "Yêu cầu kinh nghiệm " * 20 + "</p>"
+    rows = job_rows(req=req)
+    start = rows.index("1f:T")
+    p = parse(flight_page(rows, splits=(start + 30,)), "https://x/a-1-jv")   # split mid-row
+    assert "Yêu cầu kinh nghiệm" in p["jd"]
+    assert "## Benefits\n- Thưởng" in p["jd"]
+
+
+def test_decomposed_flight_text_is_normalized():
+    rows = job_rows(form="NFD")
+    assert rows != unicodedata.normalize("NFC", rows)      # fixture really is decomposed
+    p = parse(flight_page(rows), "https://x/a-1-jv")
+    assert "Viết nội dung" in p["jd"]                      # NFC literal matches
+
+
+def test_page_without_flight_data_has_no_jd():
+    p = parse("<html><head></head></html>", "https://x/a-1-jv")
+    assert p.get("jd") is None and p.get("deadline") is None

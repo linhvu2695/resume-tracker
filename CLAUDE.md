@@ -21,7 +21,7 @@ applications/<slug>/
     data.yaml       the record
     <name>.pdf      the resume actually sent (readable name, but nothing depends on it)
     resume.txt      auto-extracted on upload; powers search
-    jd.md           the job description, pasted by hand
+    jd.md           the job description, imported (or pasted if the import missed)
 ```
 
 `slug` = `<YYYY-MM>-<company>-<title>`, ASCII-folded (`lib/store.py:make_slug`). Collisions
@@ -36,8 +36,12 @@ get a `-2` suffix, because applying to the same company twice is normal.
 ## The recommendation primitive — reuse it, don't rebuild
 
 `store.needs_attention(rec, as_of)` returns a reason string or `None`, and
-`store.dashboard(records, as_of)` aggregates. Precedence: overdue follow-up → unsent draft →
-no movement in `STALE_AFTER_DAYS` (10). Closed statuses never nag.
+`store.dashboard(records, as_of)` aggregates. Precedence: overdue follow-up → unsent draft
+(counting down to `position.deadline` when known) → no movement in `STALE_AFTER_DAYS` (10).
+Closed statuses never nag.
+
+Status changes go through `store.set_status(rec, new, on)`, which logs the event and, on
+`applied`, stamps `applied_on` and schedules `follow_up_on` `FOLLOW_UP_AFTER_DAYS` (7) out.
 
 **Always thread `as_of` through** — never call `date.today()` inside this layer. That was a
 real bug: follow-ups honored the passed date while staleness read the clock, which made the
@@ -51,8 +55,12 @@ dashboard untestable and wrong. `days_since(iso, as_of)` takes the date for the 
   exactly what happened. `tests/test_vietnamworks.py` has an explicit decomposed-input test.
 - **The `$` in a VietnamWorks salary is not a currency.** `$15000000` is VND, `$100` is USD.
   Inferred from magnitude in `parse_salary`. Four shapes exist: range, `Từ X`, negotiable, empty.
-- **The job description is not importable.** The page is a client-rendered SPA; a fetch returns
-  ~100 characters of body text. Do not "fix" this with a headless browser without asking.
+- **The job description lives in script tags, not the HTML.** The page is a Next.js app: visible
+  body text is ~100 characters, but the full job object (description, requirements, benefits,
+  `expiredOn`) is in the `self.__next_f.push(...)` flight payload. Long strings are references
+  (`"$29"`) to text rows `29:T<hex byte length>,<text>` — the length is UTF-8 **bytes** and the
+  row has no trailing newline. NFC-normalize *after* parsing rows, never before: normalizing
+  changes byte lengths and silently truncates rows. No headless browser is needed — don't add one.
 - **Image-only PDFs extract to nothing.** `pdftext.extract` flags it (`ok: False` + warning)
   rather than storing an empty string. Keep that distinction — silently empty is worse.
 - **`_local_only()` is a real check.** It is not a stub that returns `True`. Do not weaken it.

@@ -6,7 +6,7 @@ disk — the resume PDF you actually sent, the job description, and a `data.yaml
 
 - **Home** — what needs action today: follow-ups due, applications that have gone quiet.
 - **Applications** — everything you've sent, with full-text search across resumes and JDs.
-- **New** — paste a VietnamWorks job URL to prefill the position, then attach the PDF.
+- **New** — one click from a VietnamWorks job page imports the whole posting; pick the PDF and save.
 
 ## Quick start
 
@@ -44,14 +44,16 @@ into any external service.
 
 ### Adding an application
 
-Open the **New** tab, paste a VietnamWorks URL, press **Import**. Title, company, location,
-salary, job id and posting month fill in automatically. Then attach the resume PDF you sent
-on the application's page.
+**One-time setup:** open the **New** tab and drag the **＋ Save to tracker** button to your
+browser's bookmarks bar.
 
-**The job description does not import, by design.** A VietnamWorks job page is a client-rendered
-SPA — the HTML a plain fetch returns carries about 100 characters of visible text, and the
-responsibilities and requirements arrive later via JavaScript. Everything importable lives in
-the `og:` meta tags. Paste the description into the JD box yourself; it is then searchable.
+**Each application:** on a VietnamWorks job page, click **＋ Save to tracker**. The tracker opens
+with title, company, location, salary, deadline and the full job description already filled in.
+Pick the resume PDF, tick *I have already applied* if you have, and press **Save application**.
+Marking an application applied schedules a follow-up 7 days out; an unsent draft counts down
+to the posting's deadline on Home.
+
+You can also paste a job URL into the **New** tab and press **Import** — same result.
 
 Non-VietnamWorks URLs are not parsed yet — fill the form in by hand and it works the same.
 

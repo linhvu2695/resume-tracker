@@ -50,3 +50,27 @@ def test_dashboard_counts_and_sorts():
     assert d["total"] == 3 and d["by_status"]["applied"] == 1
     assert d["open"] == 2                                   # offer is not an open status
     assert [a["slug"] for a in d["attention"]] == ["a", "c"]  # stalest first
+
+
+def test_marking_applied_schedules_a_follow_up():
+    rec = store.new_application({"title": "t", "company": "c"})
+    store.set_status(rec, "applied", dt.date(2026, 10, 11))
+    assert rec["status"] == "applied" and rec["applied_on"] == "2026-10-11"
+    assert rec["follow_up_on"] == "2026-10-18"              # FOLLOW_UP_AFTER_DAYS later
+    assert rec["events"][-1] == {"on": "2026-10-11", "type": "status",
+                                 "from": "draft", "to": "applied"}
+
+
+def test_marking_applied_keeps_a_follow_up_the_user_set():
+    rec = store.new_application({"title": "t", "company": "c"})
+    rec["follow_up_on"] = "2026-10-13"
+    store.set_status(rec, "applied", dt.date(2026, 10, 11))
+    assert rec["follow_up_on"] == "2026-10-13"
+
+
+def test_draft_with_closing_posting_says_so():
+    rec = {"status": "draft", "created_on": "2026-10-10",
+           "position": {"deadline": "2026-10-13"}}
+    assert store.needs_attention(rec, dt.date(2026, 10, 11)) == "draft - posting closes in 2d"
+    assert store.needs_attention(rec, dt.date(2026, 10, 13)) == "draft - posting closes today"
+    assert store.needs_attention(rec, dt.date(2026, 10, 14)) == "draft - posting closed"
