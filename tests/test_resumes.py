@@ -8,28 +8,28 @@ from lib import resumes, store
 # ---- logical lines: diff what was written, not how the PDF wrapped it -------------
 
 WRAPPED = ("PROFESSIONAL PROFILE\n"
-           "Brand and content strategist with 7+ years across social commerce and brand building\n"
-           "and marketing education.\n"
-           "• Created a zero-budget TikTok series that reached 4.3M views and landed 4 brand\n"
-           "partnerships in 30 days\n"
-           "• Built a fashion brand\n"
+           "Marketing generalist with 6+ years across retail campaigns, events and brand building\n"
+           "and customer research.\n"
+           "• Launched a low-cost short-video series that reached 2.8M views and signed 3 sponsor\n"
+           "agreements in 45 days\n"
+           "• Built a coffee brand\n"
            "SKILLS")
 
 
 def test_logical_lines_rejoin_wrapped_lines_but_keep_bullets_and_headings():
     assert resumes.logical_lines(WRAPPED) == [
         "PROFESSIONAL PROFILE",
-        "Brand and content strategist with 7+ years across social commerce and brand building and marketing education.",
-        "• Created a zero-budget TikTok series that reached 4.3M views and landed 4 brand partnerships in 30 days",
-        "• Built a fashion brand",
+        "Marketing generalist with 6+ years across retail campaigns, events and brand building and customer research.",
+        "• Launched a low-cost short-video series that reached 2.8M views and signed 3 sponsor agreements in 45 days",
+        "• Built a coffee brand",
         "SKILLS",
     ]
 
 
 def test_rewrapping_alone_is_not_a_change():
     """Adding one word early in a paragraph re-wraps every line after it in the PDF."""
-    a = "• Created a zero-budget TikTok series that reached 4.3M views and landed 4 brand\npartnerships in 30 days"
-    b = "• Created a zero-budget TikTok series that reached 4.3M views and landed four\nbrand partnerships in 30 days"
+    a = "• Launched a low-cost short-video series that reached 2.8M views and signed 3 sponsor\nagreements in 45 days"
+    b = "• Launched a low-cost short-video series that reached 2.8M views and signed three\nsponsor agreements in 45 days"
     d = resumes.diff(a, b)
     assert d["changed"] == 1 and d["added"] == 0 and d["removed"] == 0     # one line, one word
 
@@ -63,7 +63,7 @@ def test_a_changed_word_is_marked_inside_the_line():
 def test_unrelated_lines_are_not_paired_as_a_change():
     """A removed bullet and an unrelated new one are a delete and an insert, not one
     'changed' line with every word marked."""
-    d = resumes.diff("• Managed B2B accounts for Shell", "• Coached students to 400K followers")
+    d = resumes.diff("• Managed B2B accounts for Acme", "• Coached students to 250K followers")
     assert (d["added"], d["removed"], d["changed"]) == (1, 1, 0)
 
 

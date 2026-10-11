@@ -47,8 +47,8 @@ def _google_docs_pdf(lines):
 
 
 def test_google_docs_pdf_keeps_words_on_their_line(tmp_path):
-    lines = ["Lecturer in Digital Media Marketing at a college of technology",
-             "Built a fashion brand from a single Shopee listing to 2B VND revenue",
+    lines = ["Lecturer in Consumer Marketing at a university of design",
+             "Built a coffee brand from a single market stall to 3B VND revenue",
              "Grew a cross-platform community on a small ad budget"]
     p = tmp_path / "gdocs.pdf"
     p.write_bytes(_google_docs_pdf(lines))
