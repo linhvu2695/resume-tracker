@@ -1,4 +1,4 @@
-.PHONY: run test import
+.PHONY: run test import demo demo-serve
 
 # Serve the tracker on http://127.0.0.1:8082/ (setup: README.md).
 # 8082, not 8081 -- interview-prep uses 8081 and the two can run side by side.
@@ -12,6 +12,12 @@ run:
 import:
 	@test -n "$(URL)" || { echo "usage: make import URL='<a VietnamWorks or TopCV job link>'"; exit 2; }
 	uv run python -m lib.importer "$(URL)"
+
+# Live demo (static site for Vercel): README -> Live demo.
+demo:
+	uv run python demo/build.py
+demo-serve:
+	uv run python demo/build.py --serve
 
 test:
 	uv run --group dev pytest

@@ -97,6 +97,15 @@ for display). The UI groups diff rows into reviewable changes (`groupChanges` in
 `web/app.js`): a moved line — reworded or not — is ONE change, so rejecting it can never
 duplicate or drop a line; `assembleTailored` builds the copied text. Test both when touching them.
 
+## Live demo (`demo/`)
+
+`demo/build.py` builds a static site: it creates a scratch tracker from `demo/sample.json`,
+serves it with the real `server.Handler`, and records every response the app requests into
+`data.json`. `demo/demo.js` replays those in the browser and re-implements the few server
+rules that visitor edits need (`set_status`, `needs_attention`/`dashboard`, `_find`) — **when
+you change one of those in `lib/store.py` or `server.py`, change `demo.js` to match.**
+Personal inputs (the resume PDF, `demo/private/`) and `demo/dist/` are gitignored.
+
 ## Gotchas
 
 - **VietnamWorks serves decomposed Unicode.** `tuyển` arrives as `e` + combining marks, not

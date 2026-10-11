@@ -171,6 +171,24 @@ check runs locally, not by trusting the AI. Only your base resume **with your na
 phone, links and @handles removed** and the job description are sent to Claude; the
 placeholders are filled back in on your machine. The app never edits your PDF.
 
+## Live demo
+
+A static demo of this app runs on Vercel: the real `app.html` + `web/app.js`, plus
+`demo/demo.js`, which answers the app's API calls in the browser from data recorded off the
+real server at build time. Visitors can click through everything; their changes stay in their
+own browser (with a Reset button). Import works for a few saved sample postings; PDF upload
+and `/tailor` need the real app.
+
+```sh
+make demo-serve        # build demo/dist/ and preview it on http://127.0.0.1:8095/
+cd demo/dist && vercel deploy --prod
+```
+
+The build reads its personal inputs from outside git — the base resume (`DEMO_RESUME`,
+default `../portfolio/public/resume.pdf`) and `/tailor` results in `demo/private/` — so the
+public repo holds only the builder, `demo/sample.json` (fictional statuses) and
+`demo/postings.json` (public job ads, recruiter emails removed).
+
 ## Privacy
 
 **Your applications never enter git.** The code repository is public; your data is not in it.

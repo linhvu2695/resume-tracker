@@ -18,3 +18,7 @@ applications/*
 state.json
 resumes/
 *.pdf
+
+# Demo build: personal inputs (resume, tailored versions) and the built site stay out of git.
+demo/private/
+demo/dist/

@@ -1,0 +1,18 @@
+{
+  "_about": "The live demo's sample applications. Statuses, dates and notes are FICTIONAL — they show what the app does, not real applications. Postings are indexes into postings.json; day offsets are relative to the build day and shift to the visitor's today at runtime.",
+  "github": "https://github.com/linhvu2695/resume-tracker",
+  "base_label": "Base resume 2026",
+  "versions": [
+    {"key": "ai-backend", "label": "Tailored · AI Backend", "from_tailoring": "vnw"},
+    {"key": "llm-agents", "label": "Tailored · LLM & Agents", "from_tailoring": "topcv"}
+  ],
+  "applications": [
+    {"posting": 0, "resume": "ai-backend", "tailoring": "vnw", "created": -14, "applied": -13,
+     "steps": [[-8, "screening"], [-3, "interview"]],
+     "notes": [[-8, "Recruiter call — sample note"], [-3, "Technical interview booked — sample note"]]},
+    {"posting": 1, "resume": "llm-agents", "tailoring": "topcv", "created": -10, "applied": -9, "steps": [], "notes": []},
+    {"posting": 2, "resume": "base", "created": -12, "applied": -11,
+     "steps": [[-4, "screening"]], "notes": [[-4, "HR asked for portfolio links — sample note"]]}
+  ],
+  "importable": [3]
+}
