@@ -70,6 +70,16 @@ when a site lacks JobPosting. All importers return the same position dict (incl.
 `deadline`, `source`, `source_id`). On TopCV, `identifier.value` is the *company* id — the
 job id comes from the URL. A results page raises `NotAJobPage` with a user-facing hint.
 
+## Languages (EN / VI)
+
+The UI is bilingual; Vietnamese is the default and the header switch remembers the choice
+in `localStorage` (`rt-lang`). Code is written in English: wrap every user-visible string in
+`t('...')` and add its Vietnamese to the `VI` table at the top of `web/app.js` (a missing
+entry silently shows English). Status labels go through `st()`. The server stays English;
+messages it sends that users see (needs-attention reasons, import errors) are translated by
+pattern in `VI_SERVER` via `tServer()` -- add a pattern when you add such a message. Data
+(titles, JDs, resumes, notes) is never translated.
+
 ## Gotchas
 
 - **VietnamWorks serves decomposed Unicode.** `tuyển` arrives as `e` + combining marks, not

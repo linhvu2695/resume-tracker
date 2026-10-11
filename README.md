@@ -88,6 +88,12 @@ The PDF keeps a readable filename because you re-attach it from disk, but nothin
 it — `data.yaml` is the source of truth. That matters with real Vietnamese company names and
 titles containing `/`, `&` and diacritics, which a filename-as-database scheme cannot survive.
 
+## Language
+
+The interface is in **Vietnamese** by default; switch to **English** with **VI | EN** in the
+header. Your choice is remembered in this browser. Job titles, descriptions and resumes stay
+in whatever language they were written in.
+
 ## Comparing resumes
 
 Each application keeps the exact PDF you sent. The **Resumes** tab groups them into

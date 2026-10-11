@@ -54,6 +54,8 @@ header{position:sticky;top:0;z-index:20;display:flex;align-items:flex-end;justif
 .tabs button.on{background:var(--surface2);color:var(--text);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
 .tabs button:hover:not(.on){color:var(--text)}
 .tabs button.add{color:var(--ok)}
+.lang button{padding:7px 10px;font-size:11px;letter-spacing:.08em}
+.lang button.on{color:var(--ok)}
 
 main{padding:34px 30px 80px;max-width:1180px;margin:0 auto}
 section{animation:rise .45s cubic-bezier(.2,.7,.2,1) both}
@@ -91,6 +93,7 @@ h2.title{font-family:var(--display);font-weight:700;font-size:26px;letter-spacin
 @media(max-width:640px){
   header{flex-direction:column;align-items:stretch;padding:14px 16px 12px;gap:12px}
   .hud{flex-direction:column-reverse;align-items:stretch;gap:8px}
+  .lang{align-self:flex-end}
   .tabs button{flex:1;padding:7px 8px}
   .stepper button{min-width:0;flex:1 1 30%}
   .stepper .gap{display:none}
@@ -238,12 +241,13 @@ mark.ins{background:color-mix(in srgb,var(--ok) 32%,transparent);color:#fff;bord
 <body>
 <header>
   <div class="brand">
-    <div class="eyebrow">Local · Private · Yours</div>
+    <div class="eyebrow" id="eyebrow">Local · Private · Yours</div>
     <h1>Resume Tracker<span class="dot">.</span></h1>
   </div>
   <div class="hud">
     <span id="hdr"></span>
     <nav class="tabs" id="nav"></nav>
+    <div class="tabs lang" id="lang" title="Language / Ngôn ngữ"></div>
   </div>
 </header>
 <main id="main"></main>
