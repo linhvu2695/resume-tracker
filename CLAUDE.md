@@ -6,8 +6,9 @@ part an agent needs to *change* it safely.
 ## Ground rules
 
 1. **This repo holds personal data.** Resume PDFs with a real name, phone, email, address.
-   Never push to a public remote, never paste `applications/**` into an external service,
-   never add a flag that binds the server to anything but `127.0.0.1`.
+   `applications/**` and `state.json` are gitignored and must stay that way -- never
+   `git add -f` them. Never push to a public remote, never paste `applications/**` into an
+   external service, never add a flag that binds the server to anything but `127.0.0.1`.
 2. **No build step, no framework, no runtime npm.** The frontend is one HTML file and one
    JS file, served as-is. Keep it that way — it is the reason this app starts in a second.
 3. **Dependencies are PyYAML and pypdf.** Adding a third needs a real reason.

@@ -162,6 +162,7 @@ class Handler(BaseHTTPRequestHandler):
             pos.pop("_server_rendered_chars", None)
             jd = pos.pop("jd", None)
             return self._json({"position": pos, "jd": jd,
+                               "existing": store.same_posting(store.load_all(), pos),
                                "note": None if jd else "The job description could not be read "
                                                        "from that page -- paste it into the JD box."})
 

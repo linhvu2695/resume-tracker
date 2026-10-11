@@ -74,3 +74,15 @@ def test_draft_with_closing_posting_says_so():
     assert store.needs_attention(rec, dt.date(2026, 10, 11)) == "draft - posting closes in 2d"
     assert store.needs_attention(rec, dt.date(2026, 10, 13)) == "draft - posting closes today"
     assert store.needs_attention(rec, dt.date(2026, 10, 14)) == "draft - posting closed"
+
+
+def test_same_posting_is_found_but_same_company_is_not():
+    """Saving one posting twice is a mistake; applying to one company twice is normal."""
+    recs = [
+        {"slug": "a", "position": {"source": "vietnamworks", "source_id": "2112562", "company": "ROTT"}},
+        {"slug": "b", "position": {"source": "vietnamworks", "source_id": "999", "company": "ROTT"}},
+        {"slug": "c", "position": {"company": "ROTT"}},
+    ]
+    pos = {"source": "vietnamworks", "source_id": "2112562", "company": "ROTT"}
+    assert store.same_posting(recs, pos) == ["a"]
+    assert store.same_posting(recs, {"company": "ROTT"}) == []      # no id, no guess

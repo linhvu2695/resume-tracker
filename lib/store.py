@@ -77,6 +77,16 @@ def set_status(rec, new, on):
     return rec
 
 
+def same_posting(records, position):
+    """Slugs of records for the same job posting (same source + id). Matching on the
+    company alone would be wrong -- applying to one company twice is normal."""
+    key = (position.get("source"), position.get("source_id"))
+    if not all(key):
+        return []
+    return [r["slug"] for r in records
+            if ((r.get("position") or {}).get("source"), (r.get("position") or {}).get("source_id")) == key]
+
+
 def path_for(slug):
     return APPS / slug
 

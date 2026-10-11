@@ -86,11 +86,14 @@ titles containing `/`, `&` and diacritics, which a filename-as-database scheme c
 
 ## Privacy
 
-**Keep the git remote private.** This repo holds resume PDFs: your full name, phone number,
-email, often your address and photo. In a public repo that is Google-indexable, harvested by
-data brokers, and permanent — git history keeps every version after you delete the file.
-Because resumes here are curated *per employer*, a public repo also lets any reader compare
-the version you sent one company against another.
+**Your applications never enter git.** `applications/` (resume PDFs, extracted text, job
+records) and `state.json` are in `.gitignore`. A resume carries your full name, phone number,
+email, often your address and photo; git history keeps every version forever, even after the
+file is deleted, and even a private remote is one settings change away from public. So the
+remote holds only the code. **Back up `applications/` separately** (Time Machine, an
+encrypted drive) — git will not do it for you.
+
+Keep the remote private anyway. Do not force-add anything under `applications/`.
 
 The server binds `127.0.0.1` and every endpoint is gated on the client being localhost.
 There is no LAN-exposure flag. If you need to send a resume to an employer, attach the PDF

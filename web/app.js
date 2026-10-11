@@ -21,7 +21,14 @@ const api = async (path, opts) => {
   if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
   return d;
 };
+const post = (path, body) => api(path, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+});
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const STATUSES = ['draft', 'applied', 'screening', 'interview', 'offer', 'rejected', 'withdrawn'];
+const PIPELINE = ['draft', 'applied', 'screening', 'interview', 'offer'];    // the forward path
+const CLOSED = ['rejected', 'withdrawn'];
 
 const money = s => {
   if (!s) return '—';
@@ -31,12 +38,66 @@ const money = s => {
   if (s.min) return (s.open_ended ? 'from ' : '') + f(s.min);
   return s.raw || '—';
 };
+const daysFrom = d => d ? Math.round((new Date(d + 'T00:00:00') - new Date(new Date().toDateString())) / 864e5) : null;
 const ago = d => {
-  if (!d) return '—';
-  const n = Math.round((Date.now() - new Date(d + 'T00:00:00')) / 864e5);
-  return n === 0 ? 'today' : n === 1 ? 'yesterday' : `${n}d ago`;
+  const n = daysFrom(d);
+  if (n === null) return '—';
+  return n === 0 ? 'today' : n === -1 ? 'yesterday' : n < 0 ? `${-n}d ago` : `in ${n}d`;
 };
-const statusPill = s => el('span', { class: `pill s-${s || 'draft'}` }, s || 'draft');
+/* How urgent a deadline is, for coloring: closed / within 3 days / later. */
+const deadlineInfo = d => {
+  const n = daysFrom(d);
+  if (n === null) return null;
+  if (n < 0) return { cls: 'u-bad', text: 'posting closed' };
+  if (n === 0) return { cls: 'u-bad', text: 'closes today' };
+  return { cls: n <= 3 ? 'u-warn' : 'u-info', text: `closes in ${n}d` };
+};
+const pill = (text, cls) => el('span', { class: `pill ${cls}` }, [el('i'), text]);
+const statusPill = s => pill(s || 'draft', `st-${s || 'draft'}`);
+const lbl = t => el('span', { class: 'lbl' }, t);
+const b = t => el('b', {}, String(t));
+
+/* Minimal renderer for the imported JD: "## " headings, "-"/"•" bullets, plain lines. */
+function jdView(md) {
+  const box = el('div', { class: 'jd' });
+  let ul = null;
+  for (const raw of (md || '').split('\n')) {
+    const line = raw.trim();
+    if (!line) { ul = null; continue; }
+    if (line.startsWith('## ')) { ul = null; box.append(el('h4', {}, line.slice(3))); continue; }
+    const m = line.match(/^[-•*]\s*(.*)$/);
+    if (m) { if (!ul) box.append(ul = el('ul')); ul.append(el('li', {}, m[1])); continue; }
+    if (raw.startsWith('  ') && ul?.lastChild) { ul.lastChild.append(el('br'), line); continue; }
+    // Short ALL-CAPS lines are section titles inside the employer's own text ("QUYỀN LỢI").
+    if (line.length < 40 && line === line.toUpperCase() && /\p{L}/u.test(line)) { ul = null; box.append(el('h5', {}, line)); continue; }
+    ul = null; box.append(el('p', {}, line));
+  }
+  return box;
+}
+
+/* A styled PDF picker that also accepts drag-and-drop. onFile(file) fires on pick. */
+function dropzone(text, onFile) {
+  const input = el('input', { type: 'file', accept: 'application/pdf' });
+  const name = el('div', { class: 'muted sm' }, 'Click to choose, or drop a PDF here');
+  const zone = el('label', { class: 'drop' }, [
+    el('span', { class: 'ico' }, '📄'), el('div', {}, [el('div', {}, text), name]), input
+  ]);
+  const take = f => {
+    if (!f) return;
+    zone.classList.add('has'); name.textContent = `${f.name} · ${Math.round(f.size / 1024)} KB`;
+    zone.file = f; onFile && onFile(f);
+  };
+  input.addEventListener('change', () => take(input.files[0]));
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('over');
+    take([...e.dataTransfer.files].find(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name)));
+  });
+  return zone;
+}
+const uploadPdf = (slug, file) => file.arrayBuffer().then(buf =>
+  api(`/api/application/${slug}/upload?name=${encodeURIComponent(file.name)}`, { method: 'POST', body: buf }));
 
 /* ---------------- routing ---------------- */
 const views = {};
@@ -45,7 +106,7 @@ const register = (key, label, render) => { views[key] = { label, render }; };
 function nav() {
   const n = $('#nav'); n.textContent = '';
   for (const [k, v] of Object.entries(views)) {
-    n.append(el('button', { class: current === k ? 'on' : '', onclick: () => go(k) }, v.label));
+    n.append(el('button', { class: (current === k ? 'on' : '') + (k === 'new' ? ' add' : ''), onclick: () => go(k) }, v.label));
   }
 }
 let current = 'home', param = null;
@@ -66,166 +127,256 @@ addEventListener('popstate', () => { const r = route(); current = r.key; param =
 
 async function render() {
   const main = $('#main'); main.textContent = '';
+  $('#hdr').textContent = '';
   const view = views[current] || { render: detailView };
-  const sec = el('section', { class: 'on' });
+  const sec = el('section');
   main.append(sec);
   try { await (current === 'detail' ? detailView : view.render)(sec, param); }
-  catch (e) { sec.append(el('div', { class: 'err' }, e.message)); }
+  catch (e) { sec.append(el('div', { class: 'note err' }, e.message)); }
 }
+const hud = (...parts) => { const h = $('#hdr'); h.textContent = ''; h.append(...parts); };
 
 /* ---------------- Home ---------------- */
+let listFilter = null;      // a status picked on Home carries over to Applications
+
 register('home', 'Home', async sec => {
   const d = await api('/api/dashboard');
-  $('#hdr').textContent = `${d.open} open · ${d.total} total`;
+  hud(b(d.open), ' open · ', b(d.total), ' total');
 
-  sec.append(el('div', { class: 'grid' }, Object.entries(d.by_status)
-    .filter(([, n]) => n)
-    .map(([s, n]) => el('div', { class: 'card' }, [
-      el('div', { class: 'row' }, [statusPill(s), el('div', { class: 'sp' }), el('strong', {}, String(n))])
-    ]))));
+  sec.append(el('div', { class: 'h', style: 'margin-top:0' }, 'Pipeline'));
+  sec.append(el('div', { class: 'pipe' }, STATUSES.map((s, i) => el('button', {
+    class: `tile rise st-${s}${d.by_status[s] ? '' : ' zero'}`, style: `--i:${i}`,
+    onclick: () => { listFilter = s; go('applications'); }
+  }, [el('div', { class: 'n' }, String(d.by_status[s] || 0)), el('div', { class: 'l' }, s)]))));
 
-  sec.append(el('h3', {}, 'Needs attention'));
-  if (!d.attention.length) {
-    sec.append(el('div', { class: 'card muted' }, 'Nothing waiting on you. Every open application has moved recently.'));
-  } else {
-    for (const a of d.attention) {
-      sec.append(el('div', { class: 'card click', onclick: () => go('detail', a.slug) }, [
-        el('div', { class: 'row' }, [
-          el('div', {}, [el('div', {}, a.title || a.slug),
-                         el('div', { class: 'muted sm' }, a.company || '')]),
-          el('div', { class: 'sp' }),
-          el('span', { class: 'pill', style: 'color:var(--amber);border-color:#6b4d1f' }, a.why)
-        ])
-      ]));
-    }
+  sec.append(el('div', { class: 'h' }, 'Needs attention'));
+  if (!d.total) {
+    sec.append(el('div', { class: 'card empty' }, [
+      el('div', { class: 'big' }, 'No applications yet'),
+      el('div', {}, 'Save a VietnamWorks job and it will show up here.'),
+      el('div', { style: 'margin-top:16px' }, [el('button', { class: 'btn pri big', onclick: () => go('new') }, '＋ Save your first job')])
+    ]));
+    return;
   }
+  if (!d.attention.length) {
+    sec.append(el('div', { class: 'card glow empty st-offer' }, [
+      el('div', { class: 'big' }, 'Nothing waiting on you'),
+      el('div', {}, 'Every open application has moved recently.')
+    ]));
+    return;
+  }
+  d.attention.forEach((a, i) => {
+    const urgent = /closed|today|overdue|due/.test(a.why) ? 'u-bad' : /closes in [1-3]d/.test(a.why) ? 'u-warn' : 'u-info';
+    sec.append(el('div', { class: `card bar click rise ${urgent}`, style: `--i:${i + 7}`, onclick: () => go('detail', a.slug) }, [
+      el('div', { class: 'row' }, [
+        el('div', { style: 'min-width:0' }, [
+          el('div', { style: 'font-weight:600;font-size:15px' }, a.title || a.slug),
+          el('div', { class: 'muted sm' }, a.company || '')
+        ]),
+        el('div', { class: 'sp' }),
+        pill(a.why, urgent)
+      ])
+    ]));
+  });
 });
 
 /* ---------------- Applications ---------------- */
 register('applications', 'Applications', async sec => {
   const apps = await api('/api/applications');
-  $('#hdr').textContent = `${apps.length} application${apps.length === 1 ? '' : 's'}`;
+  hud(b(apps.length), ` application${apps.length === 1 ? '' : 's'}`);
 
-  const search = el('input', { placeholder: 'Search resumes, job descriptions, positions…' });
+  const search = el('input', { class: 'hero', placeholder: 'Search resumes, job descriptions, companies…' });
   const results = el('div');
+  const list = el('div');
+  const filters = el('div', { class: 'filters' });
+  const count = s => apps.filter(a => !s || a.status === s).length;
+
+  const drawFilters = () => {
+    filters.textContent = '';
+    for (const s of [null, ...STATUSES]) {
+      if (s && !count(s)) continue;
+      filters.append(el('button', {
+        class: `${s ? 'st-' + s : ''}${listFilter === s ? ' on' : ''}`,
+        onclick: () => { listFilter = s; drawFilters(); drawList(); }
+      }, [s ? el('i') : '', s || 'all', el('span', {}, String(count(s)))]));
+    }
+  };
+  const drawList = () => {
+    list.textContent = '';
+    if (!apps.length) {
+      list.append(el('div', { class: 'card empty' }, [
+        el('div', { class: 'big' }, 'No applications yet'),
+        el('div', { style: 'margin-top:14px' }, [el('button', { class: 'btn pri big', onclick: () => go('new') }, '＋ Save a job')])
+      ]));
+      return;
+    }
+    const shown = apps.filter(a => !listFilter || a.status === listFilter);
+    shown.forEach((a, i) => {
+      const p = a.position || {};
+      const dl = a.status === 'draft' ? deadlineInfo(p.deadline) : null;
+      list.append(el('div', { class: `card bar click rise st-${a.status}`, style: `--i:${i}`, onclick: () => go('detail', a.slug) }, [
+        el('div', { class: 'app' }, [
+          el('div', { style: 'min-width:0' }, [
+            el('div', { class: 't' }, p.title || a.slug),
+            el('div', { class: 's' }, (p.company || '') + (p.location ? ` · ${p.location}` : ''))
+          ]),
+          el('div', {}, [statusPill(a.status)]),
+          el('div', { class: 'm' }, [el('b', {}, 'Salary'), money(p.salary)]),
+          el('div', { class: 'm' }, [el('b', {}, 'Applied'), a.applied_on ? ago(a.applied_on) : el('span', { class: 'faint' }, 'not sent')]),
+          el('div', { class: 'm' }, dl ? [el('b', {}, 'Deadline'), el('span', { class: dl.cls, style: 'color:var(--c)' }, dl.text)]
+                                       : [el('b', {}, 'Follow-up'), a.follow_up_on ? ago(a.follow_up_on) : '—']),
+          el('div', { class: 'cv', title: a.resume ? a.resume.file : 'no resume attached' }, a.resume ? '📄' : el('span', { class: 'faint' }, '·'))
+        ])
+      ]));
+    });
+    if (!shown.length) list.append(el('div', { class: 'card empty' }, `No ${listFilter} applications.`));
+  };
+
   let t;
   search.addEventListener('input', () => {
     clearTimeout(t);
     t = setTimeout(async () => {
       results.textContent = '';
       const q = search.value.trim();
+      list.style.display = filters.style.display = q ? 'none' : '';
       if (!q) return;
       const hits = await api('/api/search?q=' + encodeURIComponent(q));
-      results.append(el('div', { class: 'muted sm' }, `${hits.length} match${hits.length === 1 ? '' : 'es'}`));
-      for (const h of hits) {
-        results.append(el('div', { class: 'card click', onclick: () => go('detail', h.slug) }, [
-          el('div', {}, `${h.title || h.slug} — ${h.company || ''}`),
-          el('div', { class: 'muted sm' }, 'in: ' + h.where.join(', ')),
-          h.snippet ? el('div', { class: 'sm', style: 'margin-top:6px;opacity:.85' }, '…' + h.snippet + '…') : ''
+      results.append(el('div', { class: 'h' }, `${hits.length} match${hits.length === 1 ? '' : 'es'}`));
+      const rx = new RegExp(q.split(/\s+/).map(w => esc(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), 'ig');
+      hits.forEach((h, i) => {
+        results.append(el('div', { class: 'card bar click rise u-warn', style: `--i:${i}`, onclick: () => go('detail', h.slug) }, [
+          el('div', { class: 'row' }, [
+            el('div', {}, [el('div', { style: 'font-weight:600' }, h.title || h.slug), el('div', { class: 'muted sm' }, h.company || '')]),
+            el('div', { class: 'sp' }),
+            ...h.where.map(w => pill(w === 'jd' ? 'job description' : w, 'u-info'))
+          ]),
+          h.snippet ? el('div', { class: 'hit', html: '…' + esc(h.snippet).replace(rx, m => `<mark>${m}</mark>`) + '…' }) : ''
         ]));
-      }
+      });
     }, 220);
   });
-  sec.append(el('div', { class: 'card' }, [search]), results);
 
-  if (!apps.length) {
-    sec.append(el('div', { class: 'card muted' }, 'No applications yet. Use the New tab to add one.'));
-    return;
-  }
-  const rows = apps.map(a => el('tr', { class: 'click', onclick: () => go('detail', a.slug) }, [
-    el('td', {}, [el('div', {}, (a.position || {}).title || a.slug),
-                  el('div', { class: 'muted sm' }, (a.position || {}).company || '')]),
-    el('td', {}, [statusPill(a.status)]),
-    el('td', { class: 'sm muted' }, (a.position || {}).location || '—'),
-    el('td', { class: 'sm muted' }, money((a.position || {}).salary)),
-    el('td', { class: 'sm muted' }, ago(a.applied_on || a.created_on)),
-    el('td', { class: 'sm muted' }, a.resume ? '📄' : '—')
-  ]));
-  sec.append(el('table', {}, [
-    el('thead', {}, [el('tr', {}, ['Position', 'Status', 'Location', 'Salary', 'Applied', 'CV'].map(h => el('th', {}, h)))]),
-    el('tbody', {}, rows)
-  ]));
+  sec.append(search, filters, results, list);
+  drawFilters(); drawList();
 });
 
 /* ---------------- New ----------------
    Normal path: on a VietnamWorks job page, click the "Save to tracker" bookmark. It opens
    /new?url=<that page>; the import runs by itself and fills everything, JD included.
    Nothing is created until Save is clicked, so no other site can write records here. */
-register('new', 'New', async sec => {
-  $('#hdr').textContent = '';
-  const url = el('input', { placeholder: 'Paste a VietnamWorks job URL, then press Import' });
+register('new', '＋ New', async sec => {
+  hud('save a job');
+  const url = el('input', { class: 'hero', placeholder: 'Paste a VietnamWorks job link…' });
+  const importBtn = el('button', { class: 'btn blue big' }, 'Import');
   const msg = el('div');
   const f = {};
-  const field = (k, label, ph) => {
-    f[k] = el('input', { placeholder: ph || '' });
-    return el('div', {}, [el('label', {}, label), f[k]]);
-  };
+  const field = (k, label) => el('div', {}, [lbl(label), f[k] = el('input')]);
+  const pdf = dropzone('Resume to send');
   f.applied = el('input', { type: 'checkbox' });
-  f.pdf = el('input', { type: 'file', accept: 'application/pdf' });
-  const form = el('div', { class: 'card' }, [
-    field('title', 'Job title *'), field('company', 'Company *'),
-    field('location', 'Location'), field('salary_raw', 'Salary'),
-    el('label', {}, 'Resume to send (PDF)'), f.pdf,
-    el('label', {}, 'Job description'),
-    f.jd = el('textarea', { placeholder: 'Filled in by Import. Paste it here if the import could not read it.' }),
-    el('label', { class: 'row' }, [f.applied, 'I have already applied']),
-  ]);
+  f.jd = el('textarea', { placeholder: 'Paste the job description if the import could not read it.' });
   let imported = null;
+
+  const jdBox = el('div', { style: 'margin-top:12px' });
+  const showJd = () => {
+    jdBox.textContent = '';
+    if (!f.jd.value.trim()) { jdBox.append(f.jd); return; }
+    jdBox.append(jdView(f.jd.value), el('button', {
+      class: 'linkbtn sm', style: 'margin-top:10px', onclick: () => { jdBox.textContent = ''; jdBox.append(f.jd); f.jd.focus(); }
+    }, 'edit'));
+  };
+  const facts = el('div', { class: 'facts' });
+  f.save = el('button', { class: 'btn pri big' }, 'Save application');
+  const form = el('div', { style: 'display:none' }, [
+    el('div', { class: 'card' }, [
+      el('div', { class: 'eyebrow st-applied' }, 'Position'),
+      facts,
+      el('div', { style: 'margin-top:16px' }, [field('title', 'Job title *')]),
+      el('div', { class: 'grid2', style: 'margin-top:14px' }, [field('company', 'Company *'), field('location', 'Location')])
+    ]),
+    el('div', { class: 'card' }, [el('div', { class: 'eyebrow st-interview' }, 'Resume'), el('div', { style: 'margin-top:12px' }, [pdf])]),
+    el('div', { class: 'card' }, [el('div', { class: 'eyebrow', style: '--c:var(--pink)' }, 'Job description'), jdBox]),
+    el('div', { class: 'row wrap', style: 'margin-top:6px' }, [
+      el('label', { class: 'check' }, [f.applied, 'I have already applied']),
+      el('div', { class: 'sp' }),
+      f.save
+    ])
+  ]);
+  const reveal = () => { form.style.display = ''; showJd(); };
 
   const doImport = async () => {
     msg.textContent = ''; msg.className = '';
     if (!url.value.trim()) return;
-    msg.className = 'muted sm'; msg.textContent = 'importing…';
+    importBtn.disabled = true; importBtn.textContent = 'Importing…';
     try {
-      const d = await api('/api/import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.value.trim() })
-      });
-      imported = d.position;
-      f.title.value = d.position.title || '';
-      f.company.value = d.position.company || '';
-      f.location.value = d.position.location || '';
-      f.salary_raw.value = (d.position.salary || {}).raw || '';
+      const d = await post('/api/import', { url: url.value.trim() });
+      const p = imported = d.position;
+      f.title.value = p.title || ''; f.company.value = p.company || '';
+      f.location.value = p.location || '';
       if (d.jd) f.jd.value = d.jd;
-      msg.className = d.note ? 'warn' : 'muted sm';
-      msg.textContent = d.note || ('Imported' + (d.position.deadline ? ` — posting closes ${d.position.deadline}` : '') + '. Pick the resume and save.');
-    } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
+      facts.textContent = '';
+      const dl = deadlineInfo(p.deadline);
+      if (p.salary) facts.append(el('span', { class: 'chip' }, ['💰 ', b(money(p.salary))]));
+      if (p.location) facts.append(el('span', { class: 'chip' }, ['📍 ', p.location]));
+      if (dl) facts.append(pill(`${dl.text} · ${p.deadline}`, dl.cls));
+      if (d.existing?.length) {
+        msg.className = 'note warn';
+        msg.append('You already track this posting. ',
+          el('button', { class: 'linkbtn', onclick: () => go('detail', d.existing[0]) }, 'Open it'),
+          ' — or save again to create a second record.');
+      } else if (d.note) {
+        msg.className = 'note warn'; msg.textContent = d.note;
+      } else {
+        msg.className = 'note ok'; msg.textContent = 'Imported. Pick the resume you are sending and save.';
+      }
+      reveal();
+    } catch (e) { msg.className = 'note err'; msg.textContent = e.message; }
+    importBtn.disabled = false; importBtn.textContent = 'Import';
   };
+  importBtn.addEventListener('click', doImport);
+  url.addEventListener('keydown', e => { if (e.key === 'Enter') doImport(); });
+
+  f.save.addEventListener('click', async () => {
+    const position = Object.assign({}, imported || {}, {
+      title: f.title.value.trim(), company: f.company.value.trim(), location: f.location.value.trim() || null
+    });
+    if (!position.title || !position.company) {
+      msg.className = 'note err'; msg.textContent = 'A job title and a company are required.'; window.scrollTo(0, 0); return;
+    }
+    f.save.disabled = true; f.save.textContent = 'Saving…';
+    try {
+      const d = await post('/api/application', { position, jd: f.jd.value, status: f.applied.checked ? 'applied' : 'draft' });
+      if (pdf.file) {
+        try { await uploadPdf(d.slug, pdf.file); }
+        catch (e) { alert(`Saved, but the resume upload failed: ${e.message}`); }
+      }
+      go('detail', d.slug);
+    } catch (e) {
+      msg.className = 'note err'; msg.textContent = e.message;
+      f.save.disabled = false; f.save.textContent = 'Save application';
+    }
+  });
 
   const bookmarklet = `javascript:void(window.open('${location.origin}/new?url='+encodeURIComponent(location.href),'_blank'))`;
-  sec.append(el('div', { class: 'card muted sm' }, [
-    'Drag this to your bookmarks bar, then click it on any VietnamWorks job page: ',
-    el('a', { href: bookmarklet, class: 'btn', onclick: e => e.preventDefault() }, '＋ Save to tracker')
-  ]));
-  sec.append(el('div', { class: 'card' }, [
-    el('div', { class: 'row' }, [url, el('button', { class: 'btn', onclick: doImport }, 'Import')])
-  ]), msg, form);
-
-  sec.append(el('button', {
-    class: 'btn pri', onclick: async () => {
-      const position = Object.assign({}, imported || {}, {
-        title: f.title.value.trim(), company: f.company.value.trim(),
-        location: f.location.value.trim() || null
-      });
-      if (!position.title || !position.company) {
-        msg.className = 'err'; msg.textContent = 'A title and a company are required.'; return;
-      }
-      try {
-        const d = await api('/api/application', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ position, jd: f.jd.value, status: f.applied.checked ? 'applied' : 'draft' })
-        });
-        const file = f.pdf.files[0];
-        if (file) {
-          try {
-            await api(`/api/application/${d.slug}/upload?name=${encodeURIComponent(file.name)}`,
-              { method: 'POST', body: await file.arrayBuffer() });
-          } catch (e) { alert(`Saved, but the resume upload failed: ${e.message}`); }
-        }
-        go('detail', d.slug);
-      } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
-    }
-  }, 'Save application'));
+  sec.append(
+    el('div', { class: 'card glow st-offer' }, [
+      el('div', { class: 'eyebrow' }, 'One-time setup'),
+      el('div', { class: 'row wrap', style: 'margin-top:12px' }, [
+        el('div', { style: 'flex:1;min-width:260px' }, [
+          el('div', { style: 'font-weight:600' }, 'Drag this button to your bookmarks bar.'),
+          el('div', { class: 'muted sm' }, 'Then on any VietnamWorks job page, click it — the job opens here already filled in.')
+        ]),
+        el('a', { href: bookmarklet, class: 'grab', title: 'Drag me to the bookmarks bar', onclick: e => e.preventDefault() }, '＋ Save to tracker')
+      ])
+    ]),
+    el('div', { class: 'card' }, [
+      el('div', { class: 'eyebrow st-applied' }, 'Or paste a link'),
+      el('div', { class: 'row', style: 'margin-top:12px' }, [url, importBtn]),
+      el('div', { class: 'sm faint', style: 'margin-top:10px' }, [
+        'Not on VietnamWorks? ', el('button', { class: 'linkbtn', onclick: reveal }, 'Fill it in by hand')
+      ])
+    ]),
+    msg, form
+  );
 
   // Arrived from the bookmark: import straight away, then drop ?url= from the address bar.
   const incoming = new URLSearchParams(location.search).get('url');
@@ -240,116 +391,108 @@ register('new', 'New', async sec => {
 async function detailView(sec, slug) {
   const a = await api('/api/application/' + encodeURIComponent(slug));
   const pos = a.position || {};
-  $('#hdr').textContent = a.slug;
   const reload = () => go('detail', slug, false);
+  hud(statusPill(a.status), ' ', a.applied_on ? `applied ${ago(a.applied_on)}` : 'not sent yet');
 
-  const statuses = ['draft', 'applied', 'screening', 'interview', 'offer', 'rejected', 'withdrawn'];
-  const sel = el('select', {
-    onchange: async () => {
-      await api(`/api/application/${slug}/status`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: sel.value })
-      });
-      reload();
-    }
-  }, statuses.map(s => el('option', { value: s, selected: s === a.status ? '' : null }, s)));
+  const setStatus = async s => { if (s !== a.status) { await post(`/api/application/${slug}/status`, { status: s }); reload(); } };
+  const at = PIPELINE.indexOf(a.status);
+  const stepper = el('div', { class: 'stepper' }, [
+    ...PIPELINE.map((s, i) => el('button', {
+      class: `st-${s}${s === a.status ? ' on' : at > i ? ' past' : ''}`, onclick: () => setStatus(s)
+    }, s)),
+    el('span', { class: 'gap' }),
+    ...CLOSED.map(s => el('button', { class: `st-${s}${s === a.status ? ' on' : ''}`, onclick: () => setStatus(s) }, s))
+  ]);
 
-  const fu = el('input', { type: 'date', value: a.follow_up_on || '' });
-  fu.addEventListener('change', async () => {
-    await api(`/api/application/${slug}/fields`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ follow_up_on: fu.value || null })
-    });
-    reload();
-  });
+  const fu = el('input', { type: 'date', value: a.follow_up_on || '', style: 'width:auto;padding:2px 6px;border-radius:6px' });
+  fu.addEventListener('change', async () => { await post(`/api/application/${slug}/fields`, { follow_up_on: fu.value || null }); reload(); });
 
-  sec.append(el('div', { class: 'card' }, [
-    el('div', { class: 'row' }, [
-      el('div', {}, [el('h2', { style: 'margin:0 0 2px;font-size:18px' }, pos.title || slug),
-                     el('div', { class: 'muted' }, pos.company || '')]),
-      el('div', { class: 'sp' }), statusPill(a.status)
-    ]),
-    el('div', { class: 'sep' }),
-    el('div', { class: 'grid' }, [
-      el('div', {}, [el('label', {}, 'Status'), sel]),
-      el('div', {}, [el('label', {}, 'Follow up on'), fu]),
-      el('div', {}, [el('label', {}, 'Location'), el('div', {}, pos.location || '—')]),
-      el('div', {}, [el('label', {}, 'Salary'), el('div', {}, money(pos.salary))]),
-      el('div', {}, [el('label', {}, 'Applied'), el('div', {}, a.applied_on || '—')]),
-      el('div', {}, [el('label', {}, 'Source'),
-                     el('div', {}, pos.url ? [el('a', { href: pos.url, target: '_blank', rel: 'noopener noreferrer' }, pos.source || 'link')] : ['—'])])
-    ])
+  const dl = deadlineInfo(pos.deadline);
+  const facts = el('div', { class: 'facts' }, [
+    pos.salary ? el('span', { class: 'chip' }, ['💰 ', b(money(pos.salary))]) : '',
+    pos.location ? el('span', { class: 'chip' }, ['📍 ', pos.location]) : '',
+    dl && a.status === 'draft' ? pill(`${dl.text} · ${pos.deadline}`, dl.cls) : pos.deadline ? el('span', { class: 'chip' }, ['⏳ closes ', pos.deadline]) : '',
+    a.applied_on ? el('span', { class: 'chip' }, ['📨 applied ', b(a.applied_on)]) : '',
+    el('span', { class: 'chip' }, ['🔔 follow up ', fu]),
+    pos.contact_email ? el('span', { class: 'chip' }, ['✉️ ', el('a', { href: `mailto:${pos.contact_email}` }, pos.contact_email)]) : '',
+    pos.url ? el('span', { class: 'chip' }, ['🔗 ', el('a', { href: pos.url, target: '_blank', rel: 'noopener noreferrer' }, pos.source || 'posting')]) : ''
+  ]);
+
+  sec.append(el('div', { class: `card glow st-${a.status}` }, [
+    el('div', { class: 'eyebrow' }, pos.company || 'application'),
+    el('h2', { class: 'title' }, pos.title || slug),
+    facts, stepper
   ]));
 
   /* --- resume --- */
-  const up = el('input', { type: 'file', accept: 'application/pdf' });
   const upMsg = el('div');
-  up.addEventListener('change', async () => {
-    const file = up.files[0]; if (!file) return;
+  const zone = dropzone(a.resume ? 'Replace the resume' : 'Attach the resume you sent', async file => {
     upMsg.className = 'muted sm'; upMsg.textContent = 'uploading…';
     try {
-      const d = await api(`/api/application/${slug}/upload?name=${encodeURIComponent(file.name)}`,
-        { method: 'POST', body: await file.arrayBuffer() });
-      upMsg.className = d.warning ? 'warn' : 'muted sm';
-      upMsg.textContent = d.warning || `extracted ${d.extracted_chars} characters from ${d.pages} page(s)`;
+      const d = await uploadPdf(slug, file);
+      upMsg.className = d.warning ? 'note warn' : 'note ok';
+      upMsg.textContent = d.warning || `Extracted ${d.extracted_chars} characters from ${d.pages} page(s).`;
       setTimeout(reload, 900);
-    } catch (e) { upMsg.className = 'err'; upMsg.textContent = e.message; }
+    } catch (e) { upMsg.className = 'note err'; upMsg.textContent = e.message; }
   });
-
+  const pdfUrl = a.resume ? `/applications/${slug}/${encodeURIComponent(a.resume.file)}` : null;
   const left = el('div', {}, [
     el('div', { class: 'card' }, [
-      el('label', {}, 'Resume sent'),
-      a.resume ? el('div', {}, [
-        el('div', { class: 'row' }, [
-          el('strong', {}, a.resume.file), el('div', { class: 'sp' }),
-          el('a', { href: `/applications/${slug}/${encodeURIComponent(a.resume.file)}`, target: '_blank' }, 'open')
-        ]),
+      el('div', { class: 'row' }, [el('div', { class: 'eyebrow st-interview' }, 'Resume sent'), el('div', { class: 'sp' }),
+                                   pdfUrl ? el('a', { class: 'btn', href: pdfUrl, target: '_blank' }, 'open ↗') : '']),
+      a.resume ? el('div', { style: 'margin:12px 0' }, [
+        el('div', { style: 'font-weight:600' }, a.resume.file),
         a.resume.text_ok === false
-          ? el('div', { class: 'warn', style: 'margin-top:8px' },
-              'No text layer found — search and tailoring will not work on this PDF.')
-          : el('div', { class: 'muted sm', style: 'margin-top:4px' },
-              `${a.resume.pages} page(s) · text extracted`)
-      ]) : el('div', { class: 'muted sm' }, 'No resume attached yet.'),
-      el('div', { style: 'margin-top:10px' }, [up]), upMsg
+          ? el('div', { class: 'note warn' }, 'No text layer found — search will not work on this PDF.')
+          : el('div', { class: 'muted sm' }, `${a.resume.pages} page(s) · text extracted, searchable`)
+      ]) : el('div', { class: 'muted sm', style: 'margin:10px 0' }, 'No resume attached yet.'),
+      zone, upMsg
     ]),
-    a.resume ? el('iframe', { class: 'pdf', src: `/applications/${slug}/${encodeURIComponent(a.resume.file)}#view=FitH` }) : ''
+    pdfUrl ? el('iframe', { class: 'pdf', src: pdfUrl + '#view=FitH', title: 'resume preview' }) : ''
   ]);
 
-  /* --- events + jd --- */
-  const evText = el('input', { placeholder: 'e.g. recruiter replied, phone screen booked' });
+  /* --- timeline + jd --- */
+  const evText = el('input', { placeholder: 'Log something — recruiter replied, call booked…' });
   const addEv = async () => {
     if (!evText.value.trim()) return;
-    await api(`/api/application/${slug}/event`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: evText.value.trim() })
-    });
+    await post(`/api/application/${slug}/event`, { text: evText.value.trim() });
     reload();
   };
   evText.addEventListener('keydown', e => { if (e.key === 'Enter') addEv(); });
+  const evLine = e => {
+    if (e.type === 'status') return [`${e.from || '—'} → `, b(e.to)];
+    if (e.type === 'resume') return ['resume attached · ', el('span', { class: 'muted' }, e.text)];
+    return [e.text || e.type];
+  };
+  const evColor = e => e.type === 'status' ? `st-${e.to}` : e.type === 'resume' ? 'st-interview' : e.type === 'created' ? 'st-draft' : 'u-warn';
 
   const jd = el('textarea', { placeholder: 'Paste the job description here.' });
   jd.value = a.jd || '';
+  const jdBox = el('div', { style: 'margin-top:12px' });
+  const jdEdit = el('button', { class: 'btn' }, 'edit');
+  const showJd = editing => {
+    jdBox.textContent = '';
+    jdEdit.style.display = editing || !a.jd ? 'none' : '';
+    if (editing || !a.jd) {
+      jdBox.append(jd, el('div', { class: 'row', style: 'margin-top:10px' }, [
+        el('button', { class: 'btn pri', onclick: async () => { await post(`/api/application/${slug}/jd`, { jd: jd.value }); reload(); } }, 'Save'),
+        a.jd ? el('button', { class: 'btn', onclick: () => showJd(false) }, 'Cancel') : ''
+      ]));
+    } else jdBox.append(jdView(a.jd));
+  };
+  jdEdit.addEventListener('click', () => showJd(true));
+  showJd(false);
 
   const right = el('div', {}, [
     el('div', { class: 'card' }, [
-      el('label', {}, 'Timeline'),
-      ...(a.events || []).slice().reverse().map(e => el('div', { class: 'ev' }, [
-        el('div', { class: 'sm' }, e.text || (e.type === 'status' ? `${e.from || '—'} → ${e.to}` : e.type)),
-        el('div', { class: 'muted sm' }, `${e.on} · ${ago(e.on)}`)
-      ])),
-      el('div', { class: 'row', style: 'margin-top:10px' }, [evText, el('button', { class: 'btn', onclick: addEv }, 'Log')])
+      el('div', { class: 'eyebrow u-warn' }, 'Timeline'),
+      el('div', { class: 'tl', style: 'margin-top:14px' }, (a.events || []).slice().reverse().map(e =>
+        el('div', { class: `ev ${evColor(e)}` }, [el('i'), el('div', { class: 'w' }, evLine(e)), el('div', { class: 'd' }, `${e.on} · ${ago(e.on)}`)]))),
+      el('div', { class: 'row', style: 'margin-top:4px' }, [evText, el('button', { class: 'btn', onclick: addEv }, 'Log')])
     ]),
     el('div', { class: 'card' }, [
-      el('label', {}, 'Job description'), jd,
-      el('button', {
-        class: 'btn', style: 'margin-top:8px', onclick: async () => {
-          await api(`/api/application/${slug}/jd`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jd: jd.value })
-          });
-          reload();
-        }
-      }, 'Save JD')
+      el('div', { class: 'row' }, [el('div', { class: 'eyebrow', style: '--c:var(--pink)' }, 'Job description'), el('div', { class: 'sp' }), jdEdit]),
+      jdBox
     ])
   ]);
 

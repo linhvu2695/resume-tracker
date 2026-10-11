@@ -6,6 +6,13 @@ server.log
 *.tmp
 .DS_Store
 .claude/
-# NOTE: applications/ and resumes/ are intentionally NOT ignored --
-# the PDFs and their data.yaml sidecars are the point of this repo.
-# Keep the GitHub remote PRIVATE. See README -> Privacy.
+.pytest_cache/
+
+# Personal data never enters git -- not even a private remote. Resume PDFs carry a
+# name, phone, email and address; git history keeps them forever. Code goes to the
+# remote; applications/ stays on this machine (back it up separately). README -> Privacy.
+applications/*
+!applications/.gitkeep
+state.json
+resumes/
+*.pdf
