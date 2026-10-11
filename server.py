@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from lib import pdftext, resumes, store
-from lib.vietnamworks import import_url
+from lib.importer import NotAJobPage, import_url
 
 BASE = Path(__file__).resolve().parent
 WEB, APPS = BASE / "web", BASE / "applications"
@@ -172,6 +172,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "give a full http(s) job URL"}, 400)
             try:
                 pos = import_url(url)
+            except NotAJobPage as e:
+                return self._json({"error": str(e)}, 400)
             except Exception as e:
                 return self._json({"error": f"could not fetch that URL: {e}"}, 502)
             pos.pop("_server_rendered_chars", None)

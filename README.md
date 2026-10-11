@@ -55,6 +55,10 @@ to the posting's deadline on Home.
 
 You can also paste a job URL into the **New** tab and press **Import** — same result.
 
+**Supported sites:** VietnamWorks, TopCV, and any job site that publishes a schema.org
+`JobPosting` (the block Google for Jobs reads). Paste the link of **one job** — a search
+results page is refused with a hint. Anything else: fill the form in by hand.
+
 Non-VietnamWorks URLs are not parsed yet — fill the form in by hand and it works the same.
 
 ### A note on salaries

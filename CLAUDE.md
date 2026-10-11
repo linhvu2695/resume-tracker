@@ -61,6 +61,15 @@ Status changes go through `store.set_status(rec, new, on)`, which logs the event
 real bug: follow-ups honored the passed date while staleness read the clock, which made the
 dashboard untestable and wrong. `days_since(iso, as_of)` takes the date for the same reason.
 
+## Importers
+
+`lib/importer.py` dispatches: VietnamWorks → `lib/vietnamworks.py`; everything else →
+`lib/jobposting.py`, a generic schema.org `JobPosting` (JSON-LD) parser — that is how TopCV
+works, and any board built for Google for Jobs will too. Add a site-specific importer only
+when a site lacks JobPosting. All importers return the same position dict (incl. `jd`,
+`deadline`, `source`, `source_id`). On TopCV, `identifier.value` is the *company* id — the
+job id comes from the URL. A results page raises `NotAJobPage` with a user-facing hint.
+
 ## Gotchas
 
 - **VietnamWorks serves decomposed Unicode.** `tuyển` arrives as `e` + combining marks, not

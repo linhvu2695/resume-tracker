@@ -8,10 +8,10 @@ PORT ?= 8082
 run:
 	PYTHONUNBUFFERED=1 uv run server.py $(PORT)
 
-# Import a job posting into applications/ from a URL:  make import URL='https://...'
+# Print what a job link imports (VietnamWorks, TopCV, any schema.org JobPosting):  make import URL='https://...'
 import:
-	@test -n "$(URL)" || { echo "usage: make import URL='https://www.vietnamworks.com/...-jv'"; exit 2; }
-	uv run python -m lib.vietnamworks "$(URL)"
+	@test -n "$(URL)" || { echo "usage: make import URL='<a VietnamWorks or TopCV job link>'"; exit 2; }
+	uv run python -m lib.importer "$(URL)"
 
 test:
 	uv run --group dev pytest
