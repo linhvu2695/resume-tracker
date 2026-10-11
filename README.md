@@ -152,6 +152,26 @@ applications used each one and how far they got.
 
 Comparison runs on the extracted text, so it needs PDFs with a text layer (see above).
 
+## AI tailoring
+
+Suggests how to tailor your **base resume** to one job — then you decide, change by change.
+
+1. Set a base resume (Resumes tab) and make sure the application has its job description.
+2. In **Claude Code**, opened in this project folder, run `/tailor <company or job>`
+   (the application page shows the exact command).
+3. Back on the application page, **AI tailoring** shows:
+   - each requirement in the job description as **strong / weak / missing**, with the lines of
+     your resume that support it and honest advice for the gaps;
+   - every suggested change — reworded lines, moved lines, cuts — each with a checkbox and the
+     reason; **Copy tailored resume** copies your base with only the accepted changes;
+   - a full **Vietnamese version**.
+
+Guardrails: the AI may reword, reorder and cut, never add. Every number in its output must
+already be in your base resume (with the same unit), and unfamiliar names are flagged — the
+check runs locally, not by trusting the AI. Only your base resume **with your name, email,
+phone, links and @handles removed** and the job description are sent to Claude; the
+placeholders are filled back in on your machine. The app never edits your PDF.
+
 ## Privacy
 
 **Your applications never enter git.** `applications/` (resume PDFs, extracted text, job
@@ -192,6 +212,8 @@ make import URL='<job link>'   # print what a job link imports, without saving a
 - `lib/vietnamworks.py` — VietnamWorks (og: meta tags + the Next.js flight payload).
 - `lib/jobposting.py` — any page with a schema.org JobPosting (TopCV, CareerLink, …).
 - `lib/resumes.py` — resume versions, the base resume, and text diffs.
+- `lib/tailor.py` — AI tailoring guardrails: redaction, the honesty check, results.
+- `.claude/skills/tailor/` — the `/tailor` skill Claude Code runs.
 - `lib/pdftext.py` — PDF text extraction with image-only detection.
 - `app.html` + `web/app.js` — the whole frontend, including the Vietnamese strings.
 - `CLAUDE.md` — the project guide for agents: data model, conventions, gotchas.

@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from lib import pdftext, resumes, store
+from lib import pdftext, resumes, store, tailor
 from lib.importer import NotAJobPage, import_url
 
 BASE = Path(__file__).resolve().parent
@@ -37,7 +37,7 @@ def _safe_slug(slug):
 
 def _find(text, term):
     """Case-insensitive search where any whitespace run in `term` matches any whitespace
-    run in `text` -- resume lines wrap mid-phrase, so "78K+ community" may span a newline."""
+    run in `text` -- resume lines wrap mid-phrase, so "64K+ community" may span a newline."""
     words = term.split()
     if not words:
         return None
@@ -127,6 +127,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(resumes.diff(ta, tb))
         if p == "/api/search":
             return self._json(self._search((q.get("q") or [""])[0]))
+        if p.startswith("/api/application/") and p.endswith("/tailor"):
+            slug = _safe_slug(p[len("/api/application/"):-len("/tailor")])
+            if not slug or not store.load(slug):
+                return self._json({"error": "unknown application"}, 404)
+            jd = store.path_for(slug) / "jd.md"
+            return self._json({"result": tailor.load(slug),
+                               "ready": {"base": bool(resumes.base_sha()),
+                                         "jd": jd.exists() and bool(jd.read_text(encoding="utf-8").strip())},
+                               "command": f"/tailor {slug}"})
         if p.startswith("/api/application/"):
             slug = _safe_slug(p[len("/api/application/"):])
             rec = store.load(slug) if slug else None

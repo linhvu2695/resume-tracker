@@ -5,7 +5,9 @@ node_modules/
 server.log
 *.tmp
 .DS_Store
-.claude/
+# The /tailor skill is part of the app; local Claude settings are not.
+.claude/*
+!.claude/skills/
 .pytest_cache/
 
 # Personal data never enters git -- not even a private remote. Resume PDFs carry a

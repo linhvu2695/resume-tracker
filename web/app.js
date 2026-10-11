@@ -103,6 +103,25 @@ const VI = {
   'resume preview': 'xem trước CV', 'Log something — recruiter replied, call booked…': 'Ghi chú — nhà tuyển dụng đã trả lời, đã hẹn gọi…',
   'resume attached · ': 'đã đính kèm CV · ', 'created': 'đã tạo', 'Paste the job description here.': 'Dán mô tả công việc vào đây.',
   'Save': 'Lưu', 'Cancel': 'Hủy', 'Timeline': 'Dòng thời gian', 'Log': 'Ghi',
+  // AI tailoring
+  'AI tailoring': 'Chỉnh CV bằng AI',
+  'optional — not used for this job': 'tùy chọn — chưa dùng cho công việc này', 'suggestions ready — has problems': 'đã có gợi ý — có lỗi cần xem',
+  'suggestions ready — {n} changes': 'đã có gợi ý — {n} thay đổi', 'Copied ✓': 'Đã chép ✓', 'copy': 'chép',
+  'Set a base resume first. ': 'Hãy đặt CV gốc trước. ', 'Go to the Resumes tab': 'Mở tab CV',
+  'Add the job description below first — tailoring is matched against it.': 'Hãy thêm mô tả công việc bên dưới trước — CV được chỉnh theo mô tả này.',
+  'In Claude Code, opened in this project folder, run:': 'Trong Claude Code (mở tại thư mục dự án này), chạy:',
+  'Claude reads your base resume — with your name, email, phone and links removed — and this job description, then writes suggestions you review here. Nothing is changed until you copy it.':
+    'Claude đọc CV gốc của bạn — đã bỏ tên, email, số điện thoại và đường link — cùng mô tả công việc này, rồi viết gợi ý để bạn xem lại ở đây. Không có gì thay đổi cho đến khi bạn chép.',
+  '{n} problems': '{n} lỗi', 'checked: no invented numbers': 'đã kiểm tra: không có số liệu bịa', '{n} to review': '{n} mục cần xem',
+  'base resume changed since — run /tailor again': 'CV gốc đã đổi — hãy chạy lại /tailor', 'Requirements': 'Yêu cầu',
+  'strong': 'đáp ứng tốt', 'weak': 'đáp ứng một phần', 'missing': 'còn thiếu',
+  'Suggested changes · {n}': 'Gợi ý chỉnh sửa · {n}', 'accept this change': 'nhận thay đổi này',
+  '{a} of {n} changes accepted': 'đã nhận {a}/{n} thay đổi', 'No changes suggested — your base resume already fits.': 'Không có gợi ý — CV gốc đã phù hợp.',
+  'Copy tailored resume': 'Chép CV đã chỉnh', 'Copy Vietnamese version': 'Chép bản tiếng Việt',
+  'The Vietnamese version is the full suggestion, not just accepted changes.': 'Bản tiếng Việt là toàn bộ gợi ý, không chỉ các thay đổi đã nhận.',
+  'Vietnamese version': 'Bản tiếng Việt',
+  '↑ moved up and reworded': '↑ chuyển lên và viết lại', '↓ moved down and reworded': '↓ chuyển xuống và viết lại',
+  '↑ moved up': '↑ chuyển lên', '↓ moved down': '↓ chuyển xuống', 'cut for this job': 'bỏ cho công việc này',
   // headings the importers write into jd.md
   'Description': 'Mô tả công việc', 'Requirements': 'Yêu cầu', 'Benefits': 'Quyền lợi', 'Skills': 'Kỹ năng',
 };
@@ -698,6 +717,186 @@ register('new', '＋ New', async sec => {
   }
 });
 
+/* "AI tailoring": the result of /tailor (run in Claude Code), reviewed change by change.
+   The AI never edits anything; the user copies the accepted text into their resume document. */
+const STRENGTH = { strong: 'st-offer', weak: 'u-warn', missing: 'st-rejected' };
+const copyText = async (text, btn) => {
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta = el('textarea'); ta.value = text; document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+  const was = btn.textContent; btn.textContent = t('Copied ✓'); setTimeout(() => { btn.textContent = was; }, 1500);
+};
+
+const normLine = s => String(s || '').replace(/\s+/g, ' ').trim();
+/* Diff rows -> reviewable changes. A line deleted in one place and inserted unchanged in another
+   is ONE 'move' (two checkboxes would let a move duplicate or drop the line); a run of deletes
+   followed by inserts reads as one rewrite. Pure: tested from Node. */
+function groupChanges(raw) {
+  const moved = new Map(), changes = [], freeIns = new Map();
+  raw.forEach((row, i) => { if (row.tag === 'insert') { const k = normLine(row.b); if (!freeIns.has(k)) freeIns.set(k, []); freeIns.get(k).push(i); } });
+  raw.forEach((row, i) => {
+    const j = row.tag === 'delete' ? (freeIns.get(normLine(row.a)) || []).shift() : undefined;
+    if (j === undefined) return;
+    const c = { kind: 'move', idxs: [i, j], text: row.a, first: Math.min(i, j), up: j < i };
+    changes.push(c); moved.set(i, c); moved.set(j, c);
+  });
+  // Reworded *and* moved: pair a leftover delete with the most similar leftover insert
+  // (same test as the server's line pairing: half the words in common).
+  const similar = (a, b) => {
+    const A = normLine(a).split(' '), B = normLine(b).split(' '), pool = new Map();
+    for (const w of B) pool.set(w, (pool.get(w) || 0) + 1);
+    let common = 0;
+    for (const w of A) if (pool.get(w)) { common++; pool.set(w, pool.get(w) - 1); }
+    return 2 * common / (A.length + B.length);
+  };
+  raw.forEach((row, i) => {
+    if (row.tag !== 'delete' || moved.has(i)) return;
+    let best = -1, score = 0.5;
+    raw.forEach((o, j) => { if (o.tag === 'insert' && !moved.has(j) && Math.abs(j - i) > 1) { const sc = similar(row.a, o.b); if (sc >= score) { best = j; score = sc; } } });
+    if (best < 0) return;
+    const c = { kind: 'move', reworded: true, idxs: [i, best], text: row.a, b: raw[best].b, first: Math.min(i, best), up: best < i };
+    changes.push(c); moved.set(i, c); moved.set(best, c);
+  });
+  for (let i = 0; i < raw.length;) {
+    if (raw[i].tag === 'equal' || moved.has(i)) { i++; continue; }
+    const idxs = [];
+    if (raw[i].tag === 'replace') idxs.push(i++);
+    else {
+      while (i < raw.length && raw[i].tag === 'delete' && !moved.has(i)) idxs.push(i++);
+      while (i < raw.length && raw[i].tag === 'insert' && !moved.has(i)) idxs.push(i++);
+    }
+    changes.push({ kind: 'edit', idxs, first: idxs[0] });
+  }
+  changes.sort((x, y) => x.first - y.first);
+  return { changes, changeOf: new Map(changes.flatMap(c => c.idxs.map(i => [i, c]))) };
+}
+/* Accepted change -> its new side; rejected -> the base line stays where it was. */
+function assembleTailored(raw, changeOf, accepted) {
+  return raw.flatMap((row, i) => {
+    if (row.tag === 'equal') return [row.a];
+    const on = accepted.has(changeOf.get(i));
+    if (row.tag === 'replace') return [on ? row.b : row.a];
+    if (row.tag === 'delete') return on ? [] : [row.a];
+    return on ? [row.b] : [];
+  }).join('\n');
+}
+
+/* Folded by default: using AI on a resume is a choice, not the default view. The fold shows a
+   one-line status; the full review is drawn the first time it is opened. */
+function tailorSection(slug) {
+  const status = el('span', { class: 'faint sm' });
+  const body = el('div', { style: 'margin-top:12px' });
+  const card = el('details', { class: 'card fold-card' }, [
+    el('summary', {}, [el('span', { class: 'eyebrow', style: '--c:var(--violet)' }, t('AI tailoring')), el('span', { class: 'sp' }), status]),
+    body]);
+  let data = null, drawn = false;
+  const draw = () => { if (data && card.open && !drawn) { drawn = true; drawTailor(body, data, slug); } };
+  card.addEventListener('toggle', draw);
+  api(`/api/application/${slug}/tailor`).then(d => {
+    data = d;
+    const r = d.result;
+    status.textContent = !r ? t('optional — not used for this job')
+      : r.problems?.some(p => p.level === 'error') ? t('suggestions ready — has problems')
+      : t('suggestions ready — {n} changes', { n: r.diff.added + r.diff.removed + r.diff.changed > 0 ? groupChanges(r.diff.rows).changes.length : 0 });
+    draw();
+  }).catch(e => { status.textContent = tServer(e.message); });
+  return card;
+}
+
+function drawTailor(body, d, slug) {
+  body.textContent = '';
+  const r = d.result;
+  if (!r) {
+    if (!d.ready.base) { body.append(el('div', { class: 'muted sm' }, [t('Set a base resume first. '), el('button', { class: 'linkbtn', onclick: () => go('resumes') }, t('Go to the Resumes tab'))])); return; }
+    if (!d.ready.jd) { body.append(el('div', { class: 'muted sm' }, t('Add the job description below first — tailoring is matched against it.'))); return; }
+    const copy = el('button', { class: 'btn' }, t('copy'));
+    copy.addEventListener('click', () => copyText(d.command, copy));
+    body.append(
+      el('div', { class: 'sm' }, t('In Claude Code, opened in this project folder, run:')),
+      el('div', { class: 'row', style: 'margin:10px 0' }, [el('code', { class: 'cmd' }, d.command), copy]),
+      el('div', { class: 'muted sm' }, t('Claude reads your base resume — with your name, email, phone and links removed — and this job description, then writes suggestions you review here. Nothing is changed until you copy it.')));
+    return;
+  }
+  const errors = (r.problems || []).filter(p => p.level === 'error'), warns = (r.problems || []).filter(p => p.level === 'warn');
+  body.append(el('div', { class: 'row wrap', style: 'gap:8px' }, [
+    errors.length ? pill(t('{n} problems', { n: errors.length }), 'u-bad') : pill(t('checked: no invented numbers'), 'st-offer'),
+    warns.length ? pill(t('{n} to review', { n: warns.length }), 'u-warn') : '',
+    r.stale ? pill(t('base resume changed since — run /tailor again'), 'u-warn') : '',
+    el('div', { class: 'sp' }), el('span', { class: 'faint sm mono' }, r.prepared_at ? r.prepared_at.replace('T', ' ') : '')
+  ]));
+  if (r.summary) body.append(el('p', { class: 'sm', style: 'margin:12px 0 0;color:#cdd6e2' }, r.summary));
+  if (errors.length) body.append(el('div', { class: 'note err' }, errors.map(p => el('div', {}, p.message))));
+
+  /* requirements */
+  if (r.gaps?.length) {
+    const order = { strong: 0, weak: 1, missing: 2 };
+    const count = s => r.gaps.filter(g => g.strength === s).length;
+    body.append(el('div', { class: 'h' }, [t('Requirements'), ' · ', ...['strong', 'weak', 'missing'].map(s => pill(`${count(s)} ${t(s)}`, STRENGTH[s]))]));
+    const list = el('div', { class: 'gaps' });
+    for (const g of r.gaps.slice().sort((a, b) => order[a.strength] - order[b.strength])) {
+      list.append(el('div', { class: `gap bar ${STRENGTH[g.strength] || ''}` }, [
+        el('div', { class: 'row wrap', style: 'gap:10px' }, [pill(t(g.strength), STRENGTH[g.strength] || 'u-info'), el('b', {}, g.requirement)]),
+        g.evidence?.length ? el('div', { class: 'ev-q' }, g.evidence.map(e => el('div', {}, e))) : '',
+        g.advice ? el('div', { class: 'sm', style: 'margin-top:6px' }, ['→ ', g.advice]) : ''
+      ]));
+    }
+    body.append(list);
+  }
+
+  /* suggested changes, each accept-able. A line removed in one place and added unchanged in
+     another is ONE "moved" change -- two checkboxes would let a move duplicate or drop a line. */
+  const raw = r.diff.rows;
+  const norm = normLine;
+  const { changes, changeOf } = groupChanges(raw);
+  const accepted = new Set(changes);
+  const why = new Map((r.notes || []).map(n => [norm(n.line), n]));
+  const flagged = line => warns.concat(errors).filter(p => line && p.message.includes(line.slice(0, 60)));
+  const counter = el('span', { class: 'muted sm' });
+  const setCount = () => { counter.textContent = t('{a} of {n} changes accepted', { a: accepted.size, n: changes.length }); };
+  body.append(el('div', { class: 'h' }, t('Suggested changes · {n}', { n: changes.length })));
+  const list = el('div', { class: 'chg' });
+  for (const c of changes) {
+    const box = el('input', { type: 'checkbox', checked: '' });
+    const lines = [];
+    let newLines = [];
+    if (c.kind === 'move' && c.reworded) {
+      lines.push(el('div', { class: 'mvtag', style: 'margin:2px 0 4px' }, t(c.up ? '↑ moved up and reworded' : '↓ moved down and reworded')),
+                 el('div', { class: 'cell del' }, c.text), el('div', { class: 'cell ins' }, c.b));
+      newLines = [c.b];
+    } else if (c.kind === 'move') {
+      lines.push(el('div', { class: 'cell mv' }, [el('span', { class: 'mvtag' }, t(c.up ? '↑ moved up' : '↓ moved down')), ' ', c.text]));
+      newLines = [c.text];
+    } else for (const i of c.idxs) {
+      const row = raw[i];
+      if (row.a != null) lines.push(el('div', { class: 'cell del' }, row.tag === 'replace' ? marked(row.a, row.a_marks, 'del') : row.a));
+      if (row.b != null) { lines.push(el('div', { class: 'cell ins' }, row.tag === 'replace' ? marked(row.b, row.b_marks, 'ins') : row.b)); newLines.push(row.b); }
+    }
+    if (c.kind === 'edit' && !newLines.length) lines.push(el('div', { class: 'why' }, t('cut for this job')));
+    const notes = newLines.map(l => why.get(norm(l))).filter(Boolean);
+    const item = el('div', { class: 'tchg' }, [
+      el('label', { class: 'check', title: t('accept this change') }, [box]),
+      el('div', { style: 'min-width:0;flex:1' }, [
+        ...lines,
+        ...notes.map(n => el('div', { class: 'why' }, [n.requirement ? el('b', {}, n.requirement + ': ') : '', n.why])),
+        ...newLines.flatMap(flagged).map(p => el('div', { class: `why ${p.level === 'error' ? 'bad' : 'warn'}` }, '⚠ ' + p.message))
+      ])
+    ]);
+    box.addEventListener('change', () => { box.checked ? accepted.add(c) : accepted.delete(c); item.classList.toggle('off', !box.checked); setCount(); });
+    list.append(item);
+  }
+  if (!changes.length) list.append(el('div', { class: 'cell' }, t('No changes suggested — your base resume already fits.')));
+  body.append(list);
+  setCount();
+
+  const assemble = () => assembleTailored(raw, changeOf, accepted);
+  const copyEn = el('button', { class: 'btn pri' }, t('Copy tailored resume'));
+  copyEn.addEventListener('click', () => copyText(assemble(), copyEn));
+  const copyVi = el('button', { class: 'btn' }, t('Copy Vietnamese version'));
+  copyVi.addEventListener('click', () => copyText(r.tailored_vi, copyVi));
+  body.append(el('div', { class: 'row wrap', style: 'margin-top:14px' }, [counter, el('div', { class: 'sp' }), copyEn, r.tailored_vi ? copyVi : '']));
+  body.append(el('div', { class: 'faint sm', style: 'margin-top:8px' }, t('The Vietnamese version is the full suggestion, not just accepted changes.')));
+  if (r.tailored_vi) body.append(el('details', { class: 'vi' }, [el('summary', {}, t('Vietnamese version')), el('div', { class: 'vi-text' }, r.tailored_vi)]));
+}
+
 /* ---------------- Detail ---------------- */
 /* "What changed for this job": this application's resume against the base, changes only. */
 function changesCard(a) {
@@ -768,6 +967,7 @@ async function detailView(sec, slug) {
       }
     }, t('Delete application'))])
   ]));
+  sec.append(tailorSection(slug));      // right under the header: the first thing to review after /tailor
 
   /* --- resume --- */
   const upMsg = el('div');

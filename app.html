@@ -236,6 +236,31 @@ mark.ins{background:color-mix(in srgb,var(--ok) 32%,transparent);color:#fff;bord
 .chg .cell.del::before{content:"− ";color:var(--bad);font-family:var(--mono)}
 .chg .cell.ins::before{content:"+ ";color:var(--ok);font-family:var(--mono)}
 @media(max-width:640px){.diff{grid-template-columns:1fr}.diff .cell:nth-child(odd){border-right:0}.diff .cell.gap,.diff .cell:not(.del):not(.ins):nth-child(even){display:none}}
+
+/* ---- AI tailoring ---- */
+details.fold-card>summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none}
+details.fold-card>summary::-webkit-details-marker{display:none}
+details.fold-card>summary::after{content:"▸";font-size:12px;color:var(--faint);transition:transform .15s}
+details.fold-card[open]>summary::after{transform:rotate(90deg)}
+details.fold-card>summary:hover .eyebrow{filter:brightness(1.25)}
+code.cmd{font-family:var(--mono);font-size:13px;color:var(--ok);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;flex:1;overflow-wrap:anywhere}
+.gaps{display:grid;gap:8px}
+.gap{position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 14px 10px 18px}
+.gap.bar::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--c)}
+.gap b{font-weight:600}
+.ev-q{margin-top:6px;font-size:12.5px;color:var(--muted);border-left:2px solid var(--line);padding-left:10px}
+.tchg{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-bottom:1px solid var(--line)}
+.tchg:last-child{border-bottom:0}
+.tchg .check{margin-top:6px}
+.tchg.off .cell{opacity:.45}
+.tchg .cell{border:0;border-radius:6px;margin:2px 0}
+.cell.mv{color:var(--text);background:color-mix(in srgb,var(--blue) 9%,transparent)}
+.mvtag{font-family:var(--mono);font-size:11px;color:var(--blue);white-space:nowrap}
+.why{font-size:12.5px;color:var(--muted);margin:6px 0 2px 14px}
+.why b{color:var(--text);font-weight:600}
+.why.warn{color:var(--warn)} .why.bad{color:var(--bad)}
+details.vi{margin-top:12px} details.vi summary{cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.vi-text{white-space:pre-wrap;font-size:13.5px;line-height:1.65;color:#cdd6e2;margin-top:10px;padding:12px 14px;background:var(--bg2);border:1px solid var(--line);border-radius:10px}
 </style>
 </head>
 <body>

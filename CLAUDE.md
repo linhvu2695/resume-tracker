@@ -9,6 +9,10 @@ part an agent needs to *change* it safely.
    `applications/**` and `state.json` are gitignored and must stay that way -- never
    `git add -f` them. Never push to a public remote, never paste `applications/**` into an
    external service, never add a flag that binds the server to anything but `127.0.0.1`.
+   **One agreed exception (2026-10-11):** `/tailor` sends Claude the *redacted* base resume
+   (`tailor/input/base.md` — name, email, phone, links, @handles replaced by placeholders) and
+   the job description. Nothing else under `applications/` — not PDFs, `resume.txt`, or
+   `redaction.json`. Any change that would send more needs the user's explicit consent.
 2. **No build step, no framework, no runtime npm.** The frontend is one HTML file and one
    JS file, served as-is. Keep it that way — it is the reason this app starts in a second.
 3. **Dependencies are PyYAML and pypdf.** Adding a third needs a real reason.
@@ -79,6 +83,16 @@ entry silently shows English). Status labels go through `st()`. The server stays
 messages it sends that users see (needs-attention reasons, import errors) are translated by
 pattern in `VI_SERVER` via `tServer()` -- add a pattern when you add such a message. Data
 (titles, JDs, resumes, notes) is never translated.
+
+## AI tailoring (`/tailor`)
+
+The AI step runs in Claude Code via `.claude/skills/tailor/SKILL.md`; the app never calls an
+LLM. `lib/tailor.py` owns the guardrails, which must not depend on the AI behaving:
+`redact()` (what may leave the machine), `unknown_facts()` / `validate()` (every number must be
+in the base with the same unit; unknown names are warnings), `load()` (restores contact details
+for display). The UI groups diff rows into reviewable changes (`groupChanges` in
+`web/app.js`): a moved line — reworded or not — is ONE change, so rejecting it can never
+duplicate or drop a line; `assembleTailored` builds the copied text. Test both when touching them.
 
 ## Gotchas
 
