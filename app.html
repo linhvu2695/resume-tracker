@@ -54,8 +54,11 @@ header{position:sticky;top:0;z-index:20;display:flex;align-items:flex-end;justif
 .tabs button.on{background:var(--surface2);color:var(--text);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
 .tabs button:hover:not(.on){color:var(--text)}
 .tabs button.add{color:var(--ok)}
-.lang button{padding:7px 10px;font-size:11px;letter-spacing:.08em}
-.lang button.on{color:var(--ok)}
+.lang button{padding:6px 8px;line-height:0}
+.lang svg{width:24px;height:16px;border-radius:3px;display:block;opacity:.4;filter:saturate(.35);transition:.16s;
+  box-shadow:0 0 0 1px rgba(255,255,255,.12)}
+.lang button:hover svg{opacity:.8;filter:none}
+.lang button.on svg{opacity:1;filter:none;box-shadow:0 0 0 1px rgba(255,255,255,.35),0 4px 12px -4px rgba(0,0,0,.8)}
 
 main{padding:34px 30px 80px;max-width:1180px;margin:0 auto}
 section{animation:rise .45s cubic-bezier(.2,.7,.2,1) both}

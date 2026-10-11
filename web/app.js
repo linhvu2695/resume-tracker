@@ -162,8 +162,20 @@ function shell() {
   document.documentElement.lang = LANG;
   $('#eyebrow').textContent = t('Local · Private · Yours');
   const box = $('#lang'); box.textContent = '';
-  for (const l of ['vi', 'en']) box.append(el('button', { class: LANG === l ? 'on' : '', onclick: () => setLang(l) }, l.toUpperCase()));
+  for (const [l, name] of [['vi', 'Tiếng Việt'], ['en', 'English']])
+    box.append(el('button', { class: LANG === l ? 'on' : '', title: name, 'aria-label': name,
+                              'aria-pressed': String(LANG === l), onclick: () => setLang(l), html: FLAGS[l] }));
 }
+/* Inline SVG, not emoji: Windows renders flag emoji as the letters "VN" / "GB". */
+const FLAGS = {
+  vi: '<svg viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#da251d"/>'
+    + '<polygon fill="#ffdd00" points="15,3.6 16.35,7.75 20.7,7.75 17.18,10.3 18.52,14.45 15,11.9 11.48,14.45 12.82,10.3 9.3,7.75 13.65,7.75"/></svg>',
+  en: '<svg viewBox="0 0 60 30" aria-hidden="true"><clipPath id="uk-s"><path d="M0,0v30h60v-30z"/></clipPath>'
+    + '<clipPath id="uk-t"><path d="M30,15h30v15zv15h-30zh-30v-15zv-15h30z"/></clipPath><g clip-path="url(#uk-s)">'
+    + '<path d="M0,0v30h60v-30z" fill="#012169"/><path d="M0,0L60,30M60,0L0,30" stroke="#fff" stroke-width="6"/>'
+    + '<path d="M0,0L60,30M60,0L0,30" clip-path="url(#uk-t)" stroke="#c8102e" stroke-width="4"/>'
+    + '<path d="M30,0v30M0,15h60" stroke="#fff" stroke-width="10"/><path d="M30,0v30M0,15h60" stroke="#c8102e" stroke-width="6"/></g></svg>',
+};
 
 const STATUSES = ['draft', 'applied', 'screening', 'interview', 'offer', 'rejected', 'withdrawn'];
 const PIPELINE = ['draft', 'applied', 'screening', 'interview', 'offer'];    // the forward path

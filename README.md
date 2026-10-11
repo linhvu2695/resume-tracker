@@ -10,7 +10,7 @@ disk — the resume PDF you actually sent, the job description, and a `data.yaml
 - **New** — one click from a job page (VietnamWorks, TopCV, CareerLink, …) imports the whole
   posting; pick the PDF and save.
 
-The interface is in Vietnamese by default, with a **VI | EN** switch.
+The interface is in Vietnamese by default, with a 🇻🇳 / 🇬🇧 flag switch in the header.
 
 ## Quick start
 
@@ -133,7 +133,7 @@ with a timestamp — nothing is erased. To restore it, move the folder back and 
 
 ## Language
 
-The interface is in **Vietnamese** by default; switch to **English** with **VI | EN** in the
+The interface is in **Vietnamese** by default; switch to **English** with the 🇬🇧 flag in the
 header. Your choice is remembered in this browser. Job titles, descriptions and resumes stay
 in whatever language they were written in.
 
