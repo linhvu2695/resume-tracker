@@ -121,6 +121,8 @@ const VI = {
   'The Vietnamese version is the full suggestion, not just accepted changes.': 'Bản tiếng Việt là toàn bộ gợi ý, không chỉ các thay đổi đã nhận.',
   'Vietnamese version': 'Bản tiếng Việt',
   '↑ moved up and reworded': '↑ chuyển lên và viết lại', '↓ moved down and reworded': '↓ chuyển xuống và viết lại',
+  '↑ moved up · {n} lines': '↑ chuyển lên · {n} dòng', '↓ moved down · {n} lines': '↓ chuyển xuống · {n} dòng',
+  '{n} moved': '{n} chuyển chỗ',
   '↑ moved up': '↑ chuyển lên', '↓ moved down': '↓ chuyển xuống', 'cut for this job': 'bỏ cho công việc này',
   // headings the importers write into jd.md
   'Description': 'Mô tả công việc', 'Requirements': 'Yêu cầu', 'Benefits': 'Quyền lợi', 'Skills': 'Kỹ năng',
@@ -778,6 +780,21 @@ function groupChanges(raw) {
     }
     changes.push({ kind: 'edit', idxs, first: idxs[0] });
   }
+  // A section moved as a whole arrives as many single-line moves whose old and new positions
+  // are both consecutive (only unchanged rows between them): merge each run into one block.
+  const moves = changes.filter(c => c.kind === 'move' && !c.reworded).sort((x, y) => x.idxs[0] - y.idxs[0]);
+  const adjacent = (a, b) => { for (let k = a + 1; k < b; k++) if (raw[k].tag !== 'equal' && !moved.has(k)) return false; return true; };
+  const blocks = [];
+  for (const m of moves) {
+    const prev = blocks[blocks.length - 1], last = prev && prev[prev.length - 1];
+    if (last && adjacent(last.idxs[0], m.idxs[0]) && adjacent(last.idxs[1], m.idxs[1]) && m.idxs[1] > last.idxs[1] && last.up === m.up) prev.push(m);
+    else blocks.push([m]);
+  }
+  for (const run of blocks.filter(b => b.length > 1)) {
+    for (const m of run) changes.splice(changes.indexOf(m), 1);
+    const idxs = run.flatMap(m => m.idxs);
+    changes.push({ kind: 'move', block: true, idxs, texts: run.map(m => m.text), text: run[0].text, first: Math.min(...idxs), up: run[0].up });
+  }
   changes.sort((x, y) => x.first - y.first);
   return { changes, changeOf: new Map(changes.flatMap(c => c.idxs.map(i => [i, c]))) };
 }
@@ -874,6 +891,10 @@ function drawTailor(body, d, slug) {
       lines.push(el('div', { class: 'mvtag', style: 'margin:2px 0 4px' }, t(c.up ? '↑ moved up and reworded' : '↓ moved down and reworded')),
                  el('div', { class: 'cell del' }, c.text), el('div', { class: 'cell ins' }, c.b));
       newLines = [c.b];
+    } else if (c.kind === 'move' && c.block) {
+      lines.push(el('div', { class: 'mvtag', style: 'margin:2px 0 4px' }, t(c.up ? '↑ moved up · {n} lines' : '↓ moved down · {n} lines', { n: c.texts.length })),
+                 ...c.texts.map(x => el('div', { class: 'cell mv' }, x)));
+      newLines = c.texts;
     } else if (c.kind === 'move') {
       lines.push(el('div', { class: 'cell mv' }, [el('span', { class: 'mvtag' }, t(c.up ? '↑ moved up' : '↓ moved down')), ' ', c.text]));
       newLines = [c.text];
@@ -924,12 +945,25 @@ function changesCard(a) {
   body.append(el('div', { class: 'muted sm' }, t('comparing with the base…')));
   api(`/api/diff?a=${a.base_sha}&b=${a.resume_sha}`).then(d => {
     body.textContent = '';
-    body.append(el('div', { class: 'row wrap' }, [diffStats(d), el('div', { class: 'sp' }),
+    const { changes } = groupChanges(d.rows);
+    // Count what was rewritten, added or cut -- moved lines are counted once, as moves, below.
+    const stats = { added: 0, removed: 0, changed: 0 };
+    for (const c of changes) {
+      if (c.kind === 'move') { if (c.reworded) stats.changed++; continue; }
+      for (const i of c.idxs) stats[{ replace: 'changed', insert: 'added', delete: 'removed' }[d.rows[i].tag]]++;
+    }
+    body.append(el('div', { class: 'row wrap' }, [diffStats(stats), el('div', { class: 'sp' }),
       el('button', { class: 'btn', onclick: () => openCompare(a.base_sha, a.resume_sha) }, t('side by side →'))]));
+    const moves = changes.filter(c => c.kind === 'move' && !c.reworded);
+    if (moves.length) body.append(el('div', { style: 'margin-top:8px' }, [pill(t('{n} moved', { n: moves.reduce((n, c) => n + (c.texts || [c.text]).length, 0) }), 'u-info')]));
     const list = el('div', { class: 'chg' });
-    for (const r of d.rows.filter(r => r.tag !== 'equal')) {
-      if (r.a != null) list.append(el('div', { class: 'cell del' }, r.tag === 'replace' ? marked(r.a, r.a_marks, 'del') : r.a));
-      if (r.b != null) list.append(el('div', { class: 'cell ins' }, r.tag === 'replace' ? marked(r.b, r.b_marks, 'ins') : r.b));
+    for (const c of changes) {
+      if (c.kind === 'move' && !c.reworded) continue;           // order-only changes: counted above, not listed
+      const rows = c.reworded ? [{ tag: 'delete', a: c.text }, { tag: 'insert', b: c.b }] : c.idxs.map(i => d.rows[i]);
+      for (const r of rows) {
+        if (r.a != null) list.append(el('div', { class: 'cell del' }, r.tag === 'replace' ? marked(r.a, r.a_marks, 'del') : r.a));
+        if (r.b != null) list.append(el('div', { class: 'cell ins' }, r.tag === 'replace' ? marked(r.b, r.b_marks, 'ins') : r.b));
+      }
     }
     if (list.childElementCount) body.append(list);
   }).catch(e => { body.textContent = tServer(e.message); });

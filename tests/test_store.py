@@ -99,3 +99,14 @@ def test_delete_moves_the_record_to_trash_and_keeps_its_files(tmp_path, monkeypa
     assert trashed.parent == tmp_path / "_trash"
     assert (trashed / "cv.pdf").read_bytes() == b"%PDF-1 sent"  # but recoverable
     assert store.delete("2026-10-acme-sales") is None           # already gone
+
+
+def test_hearing_back_clears_the_applied_follow_up():
+    """The follow-up set on 'applied' means "chase them if they don't reply". Once the
+    application moves on (screening, interview, ...), that reminder is stale."""
+    rec = store.new_application({"title": "t", "company": "c"})
+    store.set_status(rec, "applied", dt.date(2026, 10, 1))
+    assert rec["follow_up_on"] == "2026-10-08"
+    store.set_status(rec, "screening", dt.date(2026, 10, 5))
+    assert rec["follow_up_on"] is None
+    assert store.needs_attention(rec, dt.date(2026, 10, 9)) is None

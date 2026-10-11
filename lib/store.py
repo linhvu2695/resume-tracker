@@ -65,10 +65,13 @@ def new_application(position, status="draft", applied_on=None):
 
 def set_status(rec, new, on):
     """Move `rec` to `new` as of date `on`, logging the transition. Applying stamps
-    applied_on and schedules a follow-up, unless the user already chose one."""
+    applied_on and schedules a follow-up, unless the user already chose one; moving on from
+    'applied' clears that follow-up (it meant "chase them if they don't reply")."""
     if new != rec.get("status"):
         rec.setdefault("events", []).append(
             {"on": on.isoformat(), "type": "status", "from": rec.get("status"), "to": new})
+    if new != "applied" and new != "draft" and rec.get("status") == "applied":
+        rec["follow_up_on"] = None      # the "no reply yet" reminder is stale once they reply
     rec["status"] = new
     if new == "applied":
         rec["applied_on"] = rec.get("applied_on") or on.isoformat()
