@@ -361,7 +361,7 @@ def main():
     n = len(store.all_slugs())
     print(f"Resume tracker  →  http://127.0.0.1:{port}/  (localhost only)")
     print(f"Applications: {n}")
-    print("Privacy: this serves resume PDFs. Keep the git remote private.")
+    print("Privacy: this serves resume PDFs on 127.0.0.1 only; applications/ never goes into git.")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

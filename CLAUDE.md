@@ -6,9 +6,12 @@ part an agent needs to *change* it safely.
 ## Ground rules
 
 1. **This repo holds personal data.** Resume PDFs with a real name, phone, email, address.
-   `applications/**` and `state.json` are gitignored and must stay that way -- never
-   `git add -f` them. Never push to a public remote, never paste `applications/**` into an
-   external service, never add a flag that binds the server to anything but `127.0.0.1`.
+   **The GitHub repo is public (the user's decision, 2026-10-11)** — so nothing personal may
+   ever be committed: `applications/**`, `state.json` and `mail.json` are gitignored and must
+   stay that way (never `git add -f`), and code, tests, docs and commit messages use invented
+   names, contacts and metrics — never text from the user's resumes or applications. Scan the
+   staged diff for them before every push. Never paste `applications/**` into an external
+   service, never add a flag that binds the server to anything but `127.0.0.1`.
    **One agreed exception (2026-10-11):** `/tailor` sends Claude the *redacted* base resume
    (`tailor/input/base.md` — name, email, phone, links, @handles replaced by placeholders) and
    the job description. Nothing else under `applications/` — not PDFs, `resume.txt`, or

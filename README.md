@@ -22,8 +22,8 @@ If you use Claude Code (or another coding agent), paste this:
 > it by following the "For AI agents starting the app" section of its README. Give me the
 > URL when it's up.
 
-The repository is **private**: your GitHub account needs access to it, and Claude uses your
-git credentials to clone. Everything after that is in the steps below.
+The repository is public, so no GitHub access is needed. Everything after that is in the
+steps below.
 
 ### Do it yourself
 
@@ -34,7 +34,7 @@ Requirements:
 - `make`. Optional; the `uv run` command below does the same job.
 
 ```sh
-git clone https://github.com/linhvu2695/resume-tracker.git   # private: needs access
+git clone https://github.com/linhvu2695/resume-tracker.git
 cd resume-tracker
 uv sync      # one-time: creates .venv/ (PyYAML, pypdf, pytest). Seconds, not minutes.
 make run     # serves http://127.0.0.1:8082/ and stays in the foreground; Ctrl-C stops it
@@ -50,8 +50,7 @@ Then open **http://127.0.0.1:8082/**.
 Use port **8082** unless step 2 says otherwise; call it `<port>` below.
 
 0. **Prerequisites.** If `uv` is missing, ask the user, then install it (`brew install uv`, or the
-   curl line above). If you are cloning: the repo is private, so `git clone` needs the user's
-   GitHub access — if it fails on auth, stop and tell the user rather than retrying.
+   curl line above). If `git clone` fails, stop and tell the user rather than retrying.
 1. Run `uv sync` in the repo and wait for it to finish (a few seconds — no heavy dependency).
 2. **Check the port is free** — otherwise step 4 would report `up` for some *other* program, or
    another copy of this app: `lsof -ti tcp:8082 -sTCP:LISTEN` must print nothing. If it prints
@@ -70,8 +69,8 @@ the dev dependency used by `make test`.
 Verified 2026-10-11 by a fresh agent following only these steps from a clean clone.
 
 There is **no `BIND` option** and that is deliberate — see [Privacy](#privacy). Do not add one.
-Do not commit anything to a public remote. Do not paste the contents of `applications/`
-into any external service.
+Never commit anything from `applications/` or `state.json` — the repository is public. Do not
+paste the contents of `applications/` into any external service.
 
 ## Using it
 
@@ -174,14 +173,15 @@ placeholders are filled back in on your machine. The app never edits your PDF.
 
 ## Privacy
 
-**Your applications never enter git.** `applications/` (resume PDFs, extracted text, job
-records) and `state.json` are in `.gitignore`. A resume carries your full name, phone number,
-email, often your address and photo; git history keeps every version forever, even after the
-file is deleted, and even a private remote is one settings change away from public. So the
-remote holds only the code. **Back up `applications/` separately** (Time Machine, an
-encrypted drive) — git will not do it for you.
+**Your applications never enter git.** The code repository is public; your data is not in it.
+`applications/` (resume PDFs, extracted text, job records, tailoring results) and `state.json`
+are in `.gitignore`, so a clone, a fork or a push never carries them. A resume carries your
+full name, phone number, email, often your address and photo, and git history keeps every
+version forever — so never force-add anything under `applications/`. **Back up
+`applications/` separately** (Time Machine, an encrypted drive) — git will not do it for you.
 
-Keep the remote private anyway. Do not force-add anything under `applications/`.
+If you fork this to track your own applications, the same holds: your fork can be public,
+your `applications/` folder stays on your machine.
 
 The server binds `127.0.0.1` and every endpoint is gated on the client being localhost.
 There is no LAN-exposure flag. If you need to send a resume to an employer, attach the PDF

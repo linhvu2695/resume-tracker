@@ -10,7 +10,7 @@ server.log
 !.claude/skills/
 .pytest_cache/
 
-# Personal data never enters git -- not even a private remote. Resume PDFs carry a
+# Personal data never enters git -- the repo is public. Resume PDFs carry a
 # name, phone, email and address; git history keeps them forever. Code goes to the
 # remote; applications/ stays on this machine (back it up separately). README -> Privacy.
 applications/*
