@@ -115,6 +115,20 @@ def load(slug):
     return rec
 
 
+def delete(slug):
+    """Move an application to applications/_trash/ rather than erasing it: the folder holds
+    the exact resume that was sent, which cannot be recreated. Returns the trash path, or
+    None if there was no such application. _trash has no data.yaml, so all_slugs skips it."""
+    src = path_for(slug)
+    if not (src / "data.yaml").exists():
+        return None
+    trash = APPS / "_trash"
+    trash.mkdir(parents=True, exist_ok=True)
+    dest = trash / f"{slug}--deleted-{_dt.datetime.now():%Y%m%d-%H%M%S}"
+    src.rename(dest)
+    return dest
+
+
 def all_slugs():
     if not APPS.exists():
         return []

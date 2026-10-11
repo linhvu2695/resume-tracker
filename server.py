@@ -246,6 +246,9 @@ class Handler(BaseHTTPRequestHandler):
             slug = _safe_slug(slug)
             if not slug or not store.load(slug):
                 return self._json({"error": "unknown application"}, 404)
+            if action == "delete":                      # moves to applications/_trash/
+                dest = store.delete(slug)
+                return self._json({"ok": True, "trash": f"applications/_trash/{dest.name}"})
             if action == "upload":
                 return self._upload(slug, q, raw)
             try:

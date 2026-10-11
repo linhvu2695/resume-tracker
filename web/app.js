@@ -638,7 +638,15 @@ async function detailView(sec, slug) {
   sec.append(el('div', { class: `card glow st-${a.status}` }, [
     el('div', { class: 'eyebrow' }, pos.company || 'application'),
     el('h2', { class: 'title' }, pos.title || slug),
-    facts, stepper
+    facts, stepper,
+    el('div', { class: 'row', style: 'margin-top:14px' }, [el('div', { class: 'sp' }), el('button', {
+      class: 'btn danger', onclick: async () => {
+        const name = `${pos.title || slug}${pos.company ? ' — ' + pos.company : ''}`;
+        if (!confirm(`Delete this application?\n\n${name}\n\nIt moves to applications/_trash/ with its resume and notes, so it can be restored by moving the folder back.`)) return;
+        await post(`/api/application/${slug}/delete`, {});
+        go('applications');
+      }
+    }, 'Delete application')])
   ]));
 
   /* --- resume --- */

@@ -86,3 +86,16 @@ def test_same_posting_is_found_but_same_company_is_not():
     pos = {"source": "vietnamworks", "source_id": "2112562", "company": "ROTT"}
     assert store.same_posting(recs, pos) == ["a"]
     assert store.same_posting(recs, {"company": "ROTT"}) == []      # no id, no guess
+
+
+def test_delete_moves_the_record_to_trash_and_keeps_its_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "APPS", tmp_path)
+    d = store.save("2026-10-acme-sales", store.new_application({"title": "Sales", "company": "Acme"}))
+    (d / "cv.pdf").write_bytes(b"%PDF-1 sent")
+    store.save("2026-10-acme-ops", store.new_application({"title": "Ops", "company": "Acme"}))
+
+    trashed = store.delete("2026-10-acme-sales")
+    assert store.all_slugs() == ["2026-10-acme-ops"]            # gone from the tracker
+    assert trashed.parent == tmp_path / "_trash"
+    assert (trashed / "cv.pdf").read_bytes() == b"%PDF-1 sent"  # but recoverable
+    assert store.delete("2026-10-acme-sales") is None           # already gone
