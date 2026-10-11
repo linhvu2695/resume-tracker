@@ -25,6 +25,19 @@ applications/<slug>/
     jd.md           the job description, imported (or pasted if the import missed)
 ```
 
+Resume versions live beside the records (`lib/resumes.py`):
+
+```
+applications/_resumes/
+    <sha>.pdf / <sha>.txt   library resumes not tied to an application (e.g. the base)
+    versions.yaml           {base: <sha>, versions: {<sha>: {label, file}}}
+```
+
+A *version* is a distinct PDF by content hash (`sha256[:12]`), so one file sent to five
+employers is one version. Diffs run on `logical_lines` -- wrapped PDF lines re-joined --
+so re-wrapping is never reported as a change. `_resumes` has no `data.yaml`, so
+`store.all_slugs` never mistakes it for an application.
+
 `slug` = `<YYYY-MM>-<company>-<title>`, ASCII-folded (`lib/store.py:make_slug`). Collisions
 get a `-2` suffix, because applying to the same company twice is normal.
 

@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from lib import pdftext, store
+from lib import pdftext, resumes, store
 from lib.vietnamworks import import_url
 
 BASE = Path(__file__).resolve().parent
@@ -42,6 +42,9 @@ def _find(text, term):
     if not words:
         return None
     return re.search(r"\s+".join(map(re.escape, words)), text, re.IGNORECASE)
+
+
+_SHA = re.compile(r"[0-9a-f]{12}")
 
 
 def _safe_name(name):
@@ -111,6 +114,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(json.loads(STATE.read_text() or "{}"))
             except Exception:
                 return self._json({})
+        if p == "/api/resumes":
+            return self._json({"base": resumes.base_sha(), "versions": resumes.versions(store.load_all())})
+        if p == "/api/diff":                            # ?a=<sha>&b=<sha>
+            a, b = (q.get("a") or [""])[0], (q.get("b") or [""])[0]
+            if not (_SHA.fullmatch(a) and _SHA.fullmatch(b)):
+                return self._json({"error": "give two resume versions: ?a=<sha>&b=<sha>"}, 400)
+            records = store.load_all()
+            ta, tb = resumes.text_for(a, records), resumes.text_for(b, records)
+            if ta is None or tb is None:
+                return self._json({"error": "unknown resume version"}, 404)
+            return self._json(resumes.diff(ta, tb))
         if p == "/api/search":
             return self._json(self._search((q.get("q") or [""])[0]))
         if p.startswith("/api/application/"):
@@ -122,6 +136,7 @@ class Handler(BaseHTTPRequestHandler):
             for key, fn in (("resume_text", "resume.txt"), ("jd", "jd.md")):
                 f = d / fn
                 rec[key] = f.read_text(encoding="utf-8", errors="replace") if f.exists() else ""
+            rec["resume_sha"], rec["base_sha"] = resumes.sha_of_record(rec), resumes.base_sha()
             return self._json(rec)
 
         # resume PDFs:  /applications/<slug>/<file>.pdf
@@ -190,6 +205,33 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("jd"):
                 (APPS / slug / "jd.md").write_text(body["jd"], encoding="utf-8")
             return self._json({"ok": True, "slug": slug})
+
+        if p == "/api/resumes/upload":                 # ?name=<file.pdf>[&base=1], body = PDF
+            name = _safe_name((q.get("name") or [""])[0])
+            if not name or not name.lower().endswith(".pdf") or not raw.startswith(b"%PDF"):
+                return self._json({"error": "upload a .pdf file"}, 400)
+            tmp = APPS / f".upload-{os.getpid()}.pdf"
+            tmp.write_bytes(raw)
+            try:
+                res = pdftext.extract(tmp)
+            finally:
+                tmp.unlink(missing_ok=True)
+            if not res.get("readable"):
+                return self._json({"error": res["warning"] or "that PDF could not be read"}, 400)
+            sha = resumes.add_to_library(raw, name, res["text"])
+            if (q.get("base") or [""])[0] == "1":
+                resumes.set_meta(sha, base=True)
+            return self._json({"ok": True, "sha": sha, "warning": res["warning"]})
+        if p.startswith("/api/resumes/"):               # {label} and/or {base: true|false}
+            sha = p[len("/api/resumes/"):]
+            if not _SHA.fullmatch(sha):
+                return self._json({"error": "unknown resume version"}, 404)
+            try:
+                body = json.loads(raw or b"{}")
+            except Exception:
+                return self._json({"error": "bad request"}, 400)
+            resumes.set_meta(sha, label=body.get("label"), base=body.get("base"))
+            return self._json({"ok": True})
 
         if p == "/api/state":
             try:
@@ -266,7 +308,7 @@ class Handler(BaseHTTPRequestHandler):
 
         rec = store.load(slug)
         rec.pop("pdfs", None); rec.pop("has_text", None); rec.pop("has_jd", None); rec.pop("slug", None)
-        rec["resume"] = {"file": name, "pages": res["pages"], "text_ok": res["ok"]}
+        rec["resume"] = {"file": name, "pages": res["pages"], "text_ok": res["ok"], "sha": resumes.sha_bytes(raw)}
         rec.setdefault("events", []).append({"on": store.today(), "type": "resume", "text": name})
         store.save(slug, rec)
         return self._json({"ok": True, "extracted_chars": len(res["text"]),

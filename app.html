@@ -131,6 +131,8 @@ main{overflow-wrap:anywhere}
 .btn.big{font-size:13px;padding:11px 20px;border-radius:11px}
 .btn:disabled{opacity:.45;cursor:default}
 .linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--blue);cursor:pointer;text-decoration:underline}
+.linkbtn.sm{font-family:var(--mono);font-size:11px;font-weight:400;color:var(--faint);text-decoration:none;vertical-align:middle}
+.linkbtn.sm:hover{color:var(--blue);text-decoration:underline}
 
 /* the bookmarklet: looks like something you can pick up */
 .grab{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12.5px;font-weight:600;color:#08110b;
@@ -210,6 +212,26 @@ input[type=date]{color-scheme:dark}
 .jd ul{margin:0;padding-left:18px} .jd li{margin:3px 0} .jd li::marker{color:var(--faint)}
 .jd p{margin:4px 0}
 .jd h5{font-size:12.5px;letter-spacing:.06em;color:var(--text);margin:12px 0 4px;font-weight:700}
+
+/* ---- resume diff ---- */
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--c,var(--faint));display:inline-block;box-shadow:0 0 8px -1px var(--c)}
+button.chip{font:inherit;font-size:12.5px}
+button.chip:hover{border-color:color-mix(in srgb,var(--c,var(--blue)) 50%,var(--line));color:var(--text)}
+.diff{display:grid;grid-template-columns:1fr 1fr}
+.diff .cell,.chg .cell{font-size:13px;line-height:1.55;padding:5px 14px;border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent);white-space:pre-wrap;overflow-wrap:anywhere}
+.diff .cell:nth-child(odd){border-right:1px solid var(--line)}
+.diff .cell{color:var(--muted)}
+.cell.del{color:var(--text);background:color-mix(in srgb,var(--bad) 9%,transparent)}
+.cell.ins{color:var(--text);background:color-mix(in srgb,var(--ok) 9%,transparent)}
+.cell.gap{background:repeating-linear-gradient(135deg,transparent 0 6px,rgba(255,255,255,.025) 6px 12px)}
+mark.del{background:color-mix(in srgb,var(--bad) 35%,transparent);color:#fff;border-radius:3px;padding:0 2px;text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--bad) 70%,transparent)}
+mark.ins{background:color-mix(in srgb,var(--ok) 32%,transparent);color:#fff;border-radius:3px;padding:0 2px}
+.diff .fold{grid-column:1/-1;font-family:var(--mono);font-size:11.5px;color:var(--faint);background:var(--bg2);border:0;border-bottom:1px solid var(--line);padding:7px;cursor:pointer;text-align:center}
+.diff .fold:hover{color:var(--text)}
+.chg{margin-top:12px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.chg .cell.del::before{content:"− ";color:var(--bad);font-family:var(--mono)}
+.chg .cell.ins::before{content:"+ ";color:var(--ok);font-family:var(--mono)}
+@media(max-width:640px){.diff{grid-template-columns:1fr}.diff .cell:nth-child(odd){border-right:0}.diff .cell.gap,.diff .cell:not(.del):not(.ins):nth-child(even){display:none}}
 </style>
 </head>
 <body>

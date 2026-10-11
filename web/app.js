@@ -106,6 +106,7 @@ const register = (key, label, render) => { views[key] = { label, render }; };
 function nav() {
   const n = $('#nav'); n.textContent = '';
   for (const [k, v] of Object.entries(views)) {
+    if (!v.label) continue;                 // hidden views (compare) are reached by link
     n.append(el('button', { class: (current === k ? 'on' : '') + (k === 'new' ? ' add' : ''), onclick: () => go(k) }, v.label));
   }
 }
@@ -260,6 +261,196 @@ register('applications', 'Applications', async sec => {
   drawFilters(); drawList();
 });
 
+/* ---------------- Resumes ----------------
+   Every distinct resume once (by content hash), however many applications sent it.
+   The base is the master you tailor from; each version can be compared with it. */
+const compareUrl = (a, b) => `/compare?a=${a}&b=${b}`;
+function openCompare(a, b) {
+  history.pushState({ key: 'compare' }, '', compareUrl(a, b));
+  current = 'compare'; param = null; nav(); render();
+}
+const uploadVersion = (file, base) => file.arrayBuffer().then(buf =>
+  api(`/api/resumes/upload?name=${encodeURIComponent(file.name)}${base ? '&base=1' : ''}`, { method: 'POST', body: buf }));
+
+register('resumes', 'Resumes', async sec => {
+  const { base, versions } = await api('/api/resumes');
+  hud(b(versions.length), ` version${versions.length === 1 ? '' : 's'}`);
+  const baseV = versions.find(v => v.is_base);
+  const picked = new Set();
+  const compareBtn = el('button', { class: 'btn blue', disabled: '' }, 'Compare selected');
+  compareBtn.addEventListener('click', () => { const [x, y] = [...picked]; openCompare(x, y); });
+  const msg = el('div');
+
+  const label = v => {
+    const t = el('span', { class: 'vlabel' }, v.label);
+    const edit = el('button', { class: 'linkbtn sm', style: 'margin-left:8px' }, 'rename');
+    edit.addEventListener('click', e => {
+      e.stopPropagation();
+      const inp = el('input', { value: v.label, style: 'max-width:340px;padding:5px 9px' });
+      const done = async () => { await post(`/api/resumes/${v.sha}`, { label: inp.value }); render(); };
+      inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') done(); if (ev.key === 'Escape') render(); });
+      inp.addEventListener('blur', done);
+      t.replaceWith(inp); edit.remove(); inp.focus(); inp.select();
+    });
+    return el('span', {}, [t, edit]);
+  };
+  const usedIn = v => v.apps.length
+    ? el('div', { class: 'row wrap', style: 'gap:6px;margin-top:10px' }, v.apps.map(a =>
+        el('button', { class: `chip st-${a.status}`, style: 'cursor:pointer', onclick: () => go('detail', a.slug) },
+          [el('i', { class: 'dot' }), (a.company || a.slug).slice(0, 34), ' · ', a.status])))
+    : el('div', { class: 'faint sm', style: 'margin-top:8px' }, 'Not sent to any application yet.');
+
+  /* --- base --- */
+  sec.append(el('div', { class: 'h', style: 'margin-top:0' }, 'Base resume'));
+  if (baseV) {
+    sec.append(el('div', { class: 'card glow st-offer' }, [
+      el('div', { class: 'row wrap' }, [
+        el('div', { style: 'min-width:0' }, [
+          el('div', { class: 'eyebrow' }, 'The master you tailor from'),
+          el('div', { style: 'font-family:var(--display);font-weight:700;font-size:20px;margin-top:8px' }, label(baseV)),
+          el('div', { class: 'muted sm mono', style: 'margin-top:4px' }, `#${baseV.sha}`)
+        ]),
+        el('div', { class: 'sp' }),
+        el('a', { class: 'btn', href: baseV.files[0], target: '_blank' }, 'open ↗'),
+        el('button', { class: 'btn', onclick: async () => { await post(`/api/resumes/${baseV.sha}`, { base: false }); render(); } }, 'unset')
+      ]),
+      usedIn(baseV)
+    ]));
+  } else {
+    sec.append(el('div', { class: 'card glow st-applied' }, [
+      el('div', { class: 'eyebrow' }, 'No base resume yet'),
+      el('div', { style: 'margin:10px 0 12px' }, 'Upload your master resume — every application\'s resume is then compared against it, so you see exactly what you tailored for each job. Or mark one of the versions below as the base.'),
+      dropzone('Upload the base resume', async f => {
+        msg.className = 'muted sm'; msg.textContent = 'uploading…';
+        try { await uploadVersion(f, true); render(); }
+        catch (e) { msg.className = 'note err'; msg.textContent = e.message; }
+      }), msg
+    ]));
+  }
+
+  /* --- versions --- */
+  const others = versions.filter(v => !v.is_base);
+  sec.append(el('div', { class: 'h' }, [`Versions · ${others.length}`]));
+  if (!others.length) sec.append(el('div', { class: 'card empty' }, 'No other versions yet. Attach a resume to an application and it shows up here.'));
+  others.forEach((v, i) => {
+    const box = el('input', { type: 'checkbox' });
+    box.addEventListener('change', () => {
+      box.checked ? picked.add(v.sha) : picked.delete(v.sha);
+      if (picked.size > 2) { const first = [...picked][0]; picked.delete(first); sec.querySelector(`[data-sha="${first}"]`).checked = false; }
+      compareBtn.disabled = picked.size !== 2;
+      compareBtn.textContent = picked.size === 2 ? 'Compare selected (2)' : `Compare selected (${picked.size}/2)`;
+    });
+    box.dataset.sha = v.sha;
+    sec.append(el('div', { class: `card bar rise st-${v.best || 'draft'}`, style: `--i:${i}` }, [
+      el('div', { class: 'row wrap' }, [
+        el('label', { class: 'check', title: 'select to compare' }, [box]),
+        el('div', { style: 'min-width:0;flex:1' }, [
+          el('div', { style: 'font-weight:600;font-size:15.5px' }, label(v)),
+          el('div', { class: 'muted sm mono', style: 'margin-top:3px' },
+            `#${v.sha}${v.first_used ? ' · first used ' + v.first_used : ''}${v.in_library ? ' · in library' : ''}`)
+        ]),
+        v.best ? pill(`reached ${v.best}`, `st-${v.best}`) : '',
+        baseV ? el('button', { class: 'btn pri', onclick: () => openCompare(baseV.sha, v.sha) }, 'vs base') : '',
+        el('button', { class: 'btn', onclick: async () => { await post(`/api/resumes/${v.sha}`, { base: true }); render(); } }, 'set as base'),
+        el('a', { class: 'btn', href: v.files[0], target: '_blank' }, 'open ↗')
+      ]),
+      usedIn(v)
+    ]));
+  });
+  if (others.length > 1 || (baseV && others.length)) sec.append(el('div', { class: 'row', style: 'margin-top:4px' }, [el('div', { class: 'sp' }), compareBtn]));
+
+  if (baseV) {
+    const m2 = el('div');
+    sec.append(el('div', { class: 'h' }, 'Add a version'),
+      el('div', { class: 'card' }, [dropzone('Upload a resume that is not attached to an application', async f => {
+        m2.className = 'muted sm'; m2.textContent = 'uploading…';
+        try { await uploadVersion(f, false); render(); } catch (e) { m2.className = 'note err'; m2.textContent = e.message; }
+      }), m2]));
+  }
+});
+
+/* ---------------- Compare (opened from Resumes / an application; not a tab) ---------------- */
+const marked = (text, marks, cls) => {
+  const out = []; let at = 0;
+  for (const [s, e] of marks || []) { out.push(text.slice(at, s), el('mark', { class: cls }, text.slice(s, e))); at = e; }
+  out.push(text.slice(at));
+  return out;
+};
+const diffCell = (side, r) => {
+  const text = r[side];
+  const cls = r.tag === 'equal' ? '' : text == null ? 'gap' : side === 'a' ? 'del' : 'ins';   // swap = removed | added
+  return el('div', { class: `cell ${cls}` }, text == null ? '' :
+    r.tag === 'replace' ? marked(text, r[side + '_marks'], side === 'a' ? 'del' : 'ins') : text);
+};
+/* Long runs of unchanged lines fold into one clickable row. */
+function pairUp(rows) {
+  const out = [];
+  for (let i = 0; i < rows.length;) {
+    if (rows[i].tag !== 'delete') { out.push(rows[i++]); continue; }
+    let j = i; while (j < rows.length && rows[j].tag === 'delete') j++;
+    let k = j; while (k < rows.length && rows[k].tag === 'insert') k++;
+    const dels = rows.slice(i, j), ins = rows.slice(j, k);
+    for (let n = 0; n < Math.max(dels.length, ins.length); n++)
+      out.push({ tag: 'swap', a: dels[n]?.a ?? null, b: ins[n]?.b ?? null, a_marks: [], b_marks: [] });
+    i = k;
+  }
+  return out;
+}
+function diffRows(rows, keep = 2) {
+  rows = pairUp(rows);
+  const out = []; let i = 0;
+  while (i < rows.length) {
+    if (rows[i].tag !== 'equal') { out.push(rows[i++]); continue; }
+    let j = i; while (j < rows.length && rows[j].tag === 'equal') j++;
+    const run = rows.slice(i, j);
+    const head = i === 0 ? 0 : keep, tail = j === rows.length ? 0 : keep;
+    if (run.length > head + tail + 2) out.push(...run.slice(0, head), { fold: run.slice(head, run.length - tail) }, ...run.slice(run.length - tail));
+    else out.push(...run);
+    i = j;
+  }
+  return out;
+}
+function renderDiff(d) {
+  const grid = el('div', { class: 'diff' });
+  for (const r of diffRows(d.rows)) {
+    if (r.fold) {
+      const f = el('button', { class: 'fold' }, `⋯ ${r.fold.length} unchanged lines`);
+      f.addEventListener('click', () => f.replaceWith(...r.fold.flatMap(x => [diffCell('a', x), diffCell('b', x)])));
+      grid.append(f);
+    } else grid.append(diffCell('a', r), diffCell('b', r));
+  }
+  return grid;
+}
+const diffStats = d => el('div', { class: 'row wrap', style: 'gap:8px' }, d.added + d.removed + d.changed === 0
+  ? [pill('identical text', 'st-offer')]
+  : [d.changed ? pill(`${d.changed} changed`, 'u-warn') : '', d.added ? pill(`${d.added} added`, 'st-offer') : '',
+     d.removed ? pill(`${d.removed} removed`, 'st-rejected') : '']);
+
+register('compare', null, async sec => {
+  const q = new URLSearchParams(location.search);
+  const { versions } = await api('/api/resumes');
+  const a = q.get('a'), bb = q.get('b');
+  const pick = (val, other) => {
+    const s = el('select', { style: 'width:auto;min-width:0;max-width:100%' },
+      versions.map(v => el('option', { value: v.sha, selected: v.sha === val ? '' : null }, `${v.is_base ? '★ ' : ''}${v.label} · #${v.sha}`)));
+    s.addEventListener('change', () => openCompare(other === 'b' ? s.value : a, other === 'a' ? s.value : bb));
+    return s;
+  };
+  hud('compare resumes');
+  const d = await api(`/api/diff?a=${a}&b=${bb}`);
+  const va = versions.find(v => v.sha === a), vb = versions.find(v => v.sha === bb);
+  const side = (v, sel, cls) => el('div', { class: `card ${cls}`, style: 'margin:0' }, [
+    el('div', { class: 'eyebrow' }, cls === 'st-rejected' ? 'Before' : 'After'), el('div', { style: 'margin-top:10px' }, [sel]),
+    v ? el('div', { class: 'muted sm', style: 'margin-top:8px' }, v.apps.length ? `sent to ${[...new Set(v.apps.map(x => x.company))].join(', ')}` : 'not sent to any application') : ''
+  ]);
+  sec.append(
+    el('div', { class: 'two', style: 'margin-bottom:14px' }, [side(va, pick(a, 'b'), 'st-rejected'), side(vb, pick(bb, 'a'), 'st-offer')]),
+    el('div', { class: 'row wrap', style: 'margin-bottom:12px' }, [diffStats(d), el('div', { class: 'sp' }),
+      el('button', { class: 'btn', onclick: () => openCompare(bb, a) }, '⇄ swap')]),
+    el('div', { class: 'card', style: 'padding:0;overflow:hidden' }, [renderDiff(d)])
+  );
+});
+
 /* ---------------- New ----------------
    Normal path: on a VietnamWorks job page, click the "Save to tracker" bookmark. It opens
    /new?url=<that page>; the import runs by itself and fills everything, JD included.
@@ -388,6 +579,32 @@ register('new', '＋ New', async sec => {
 });
 
 /* ---------------- Detail ---------------- */
+/* "What changed for this job": this application's resume against the base, changes only. */
+function changesCard(a) {
+  const card = el('div', { class: 'card' }, [el('div', { class: 'eyebrow u-warn' }, 'Tailored for this job')]);
+  const body = el('div', { style: 'margin-top:12px' });
+  card.append(body);
+  if (!a.resume_sha) { body.append(el('div', { class: 'muted sm' }, 'Attach the resume you sent to see what you changed from your base.')); return card; }
+  if (!a.base_sha) {
+    body.append(el('div', { class: 'muted sm' }, ['No base resume set. ', el('button', { class: 'linkbtn', onclick: () => go('resumes') }, 'Choose one on the Resumes tab'), ' to see what you tailored.']));
+    return card;
+  }
+  if (a.base_sha === a.resume_sha) { body.append(pill('sent the base resume unchanged', 'st-draft')); return card; }
+  body.append(el('div', { class: 'muted sm' }, 'comparing with the base…'));
+  api(`/api/diff?a=${a.base_sha}&b=${a.resume_sha}`).then(d => {
+    body.textContent = '';
+    body.append(el('div', { class: 'row wrap' }, [diffStats(d), el('div', { class: 'sp' }),
+      el('button', { class: 'btn', onclick: () => openCompare(a.base_sha, a.resume_sha) }, 'side by side →')]));
+    const list = el('div', { class: 'chg' });
+    for (const r of d.rows.filter(r => r.tag !== 'equal')) {
+      if (r.a != null) list.append(el('div', { class: 'cell del' }, r.tag === 'replace' ? marked(r.a, r.a_marks, 'del') : r.a));
+      if (r.b != null) list.append(el('div', { class: 'cell ins' }, r.tag === 'replace' ? marked(r.b, r.b_marks, 'ins') : r.b));
+    }
+    if (list.childElementCount) body.append(list);
+  }).catch(e => { body.textContent = e.message; });
+  return card;
+}
+
 async function detailView(sec, slug) {
   const a = await api('/api/application/' + encodeURIComponent(slug));
   const pos = a.position || {};
@@ -448,6 +665,7 @@ async function detailView(sec, slug) {
       ]) : el('div', { class: 'muted sm', style: 'margin:10px 0' }, 'No resume attached yet.'),
       zone, upMsg
     ]),
+    changesCard(a),
     pdfUrl ? el('iframe', { class: 'pdf', src: pdfUrl + '#view=FitH', title: 'resume preview' }) : ''
   ]);
 

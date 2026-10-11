@@ -84,6 +84,20 @@ The PDF keeps a readable filename because you re-attach it from disk, but nothin
 it — `data.yaml` is the source of truth. That matters with real Vietnamese company names and
 titles containing `/`, `&` and diacritics, which a filename-as-database scheme cannot survive.
 
+## Comparing resumes
+
+Each application keeps the exact PDF you sent. The **Resumes** tab groups them into
+*versions* — the same file sent to several employers is one version — and shows which
+applications used each one and how far they got.
+
+1. Upload your **base resume** (the master you tailor from) on the Resumes tab, or mark an
+   existing version as the base.
+2. Every application page then shows **Tailored for this job**: what its resume changed
+   versus the base, changed words highlighted.
+3. **Compare** any two versions side by side from the Resumes tab.
+
+Comparison runs on the extracted text, so it needs PDFs with a text layer (see above).
+
 ## Privacy
 
 **Your applications never enter git.** `applications/` (resume PDFs, extracted text, job
