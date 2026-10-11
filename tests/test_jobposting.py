@@ -101,3 +101,23 @@ def test_vietnamworks_still_uses_its_own_importer():
            'mức lương $15000000 - $30000000, môi trường chuyên nghiệp.">')
     p = importer.parse_page("https://www.vietnamworks.com/x-2112562-jv", doc)
     assert p["source"] == "vietnamworks" and p["company"] == "CÔNG TY ROTT"
+
+
+def test_district_in_region_falls_back_to_the_province():
+    """CareerViet puts the district in addressRegion and the province in addressLocality --
+    the reverse of TopCV. Show the province either way."""
+    posting = dict(POSTING, jobLocation={"@type": "Place", "address": {
+        "addressRegion": "Huyện Long Thành", "addressLocality": "Đồng Nai", "addressCountry": "VN"}})
+    assert jobposting.parse(page(posting), URL)["location"] == "Đồng Nai"
+    posting = dict(POSTING, jobLocation={"address": {"addressRegion": "Quận 7", "addressLocality": "Hồ Chí Minh"}})
+    assert jobposting.parse(page(posting), URL)["location"] == "Hồ Chí Minh"
+    # TopCV's shape (province in region, ward in locality) is unchanged
+    assert jobposting.parse(page(POSTING), URL)["location"] == "Hồ Chí Minh"
+
+
+def test_a_single_job_page_without_data_is_not_called_a_search_page():
+    """A job page lists 'related jobs' too. If the URL itself is one job, say there is no
+    job data, not that the user pasted a search page."""
+    links = "".join(f'<a href="https://timviec365.vn/job-{i}-p20{i:05d}.html">job</a>' for i in range(8))
+    with pytest.raises(importer.NotAJobPage, match="no job posting"):
+        importer.parse_page("https://timviec365.vn/tuyen-dung-livestream-p2063482.html", page(body=links))

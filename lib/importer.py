@@ -16,6 +16,9 @@ class NotAJobPage(ValueError):
     """The URL loaded, but it is not a single job posting. The message is user-facing."""
 
 
+_JOB_ID = re.compile(r"(\d{5,})(?:\.html?)?/?$")
+
+
 def _job_links(doc, host):
     """Distinct same-site links that end in a job id -- what a results list is made of."""
     ids = set()
@@ -23,7 +26,7 @@ def _job_links(doc, host):
         u = urlparse(href)
         if u.hostname and u.hostname.lower() != host:
             continue
-        m = re.search(r"(\d{5,})(?:\.html?)?/?$", u.path)
+        m = _JOB_ID.search(u.path)
         if m:
             ids.add(m.group(1))
     return ids
@@ -36,7 +39,8 @@ def parse_page(url, doc):
     pos = jobposting.parse(doc, url)
     if pos:
         return pos
-    if len(_job_links(doc, host)) >= 3:
+    # A job page also links to "related jobs"; only call it a list when the URL itself is not one job.
+    if not _JOB_ID.search(urlparse(url).path) and len(_job_links(doc, host)) >= 3:
         raise NotAJobPage("That link is a list of jobs (search results), not one posting. "
                           "Open the job you want and use its link.")
     raise NotAJobPage("Found no job posting on that page. Fill the form in by hand below.")

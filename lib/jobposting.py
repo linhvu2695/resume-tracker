@@ -55,13 +55,21 @@ def _first(v):
     return v[0] if isinstance(v, list) and v else v
 
 
+_SUB_PROVINCE = re.compile(r"^(quận|huyện|phường|xã|thị xã|thị trấn|district|ward)\b", re.I)
+
+
 def _location(jl):
     addr = (_first(jl) or {}).get("address") if isinstance(_first(jl), dict) else None
     addr = _first(addr)
     if isinstance(addr, str):
         return addr or None
     if isinstance(addr, dict):
-        return addr.get("addressRegion") or addr.get("addressLocality") or None
+        region, locality = addr.get("addressRegion"), addr.get("addressLocality")
+        # CareerViet puts the district in addressRegion and the province in addressLocality;
+        # TopCV does the reverse. Prefer whichever is the province.
+        if region and locality and _SUB_PROVINCE.match(region.strip()) and not _SUB_PROVINCE.match(locality.strip()):
+            return locality.strip()
+        return (region or locality or "").strip() or None
     return None
 
 
