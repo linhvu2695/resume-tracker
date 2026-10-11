@@ -36,7 +36,7 @@ Requirements:
 ```sh
 git clone https://github.com/linhvu2695/resume-tracker.git   # private: needs access
 cd resume-tracker
-uv sync      # one-time: creates .venv/ with PyYAML + pypdf. Seconds, not minutes.
+uv sync      # one-time: creates .venv/ (PyYAML, pypdf, pytest). Seconds, not minutes.
 make run     # serves http://127.0.0.1:8082/ and stays in the foreground; Ctrl-C stops it
 ```
 
@@ -47,19 +47,27 @@ Then open **http://127.0.0.1:8082/**.
 
 ### For AI agents starting the app
 
-0. If `uv` is missing, install it (`brew install uv`, or the curl line above) — ask the user first.
-1. Run `uv sync` in the repo and wait for it to finish (a few seconds — no heavy dependency).
-2. Start `make run` as a **background** process. It never exits on its own. On startup it logs
-   `Resume tracker  →  http://127.0.0.1:8082/  (localhost only)`.
-3. Wait for it to come up. This prints `up` once the server is serving:
-   `curl --retry 30 --retry-connrefused --retry-delay 1 -sf http://127.0.0.1:8082/api/dashboard >/dev/null && echo up`
-4. Give the user the URL: http://127.0.0.1:8082/.
-5. To stop it, kill that background process. If 8082 is taken, use `make run PORT=<free port>`.
+Use port **8082** unless step 2 says otherwise; call it `<port>` below.
 
-A `VIRTUAL_ENV=... does not match the project environment` warning on startup only means the
-shell had another virtualenv active; uv ignores it and the app runs normally.
-Verified 2026-10-11 by following these steps from a fresh clone: `up`, all pages 200,
-a live import, `make test` green.
+0. **Prerequisites.** If `uv` is missing, ask the user, then install it (`brew install uv`, or the
+   curl line above). If you are cloning: the repo is private, so `git clone` needs the user's
+   GitHub access — if it fails on auth, stop and tell the user rather than retrying.
+1. Run `uv sync` in the repo and wait for it to finish (a few seconds — no heavy dependency).
+2. **Check the port is free** — otherwise step 4 would report `up` for some *other* program, or
+   another copy of this app: `lsof -ti tcp:8082 -sTCP:LISTEN` must print nothing. If it prints
+   a pid, pick a free port (e.g. 8090) and use it everywhere below.
+3. Start `make run PORT=<port>` as a **background** process. It never exits on its own. On
+   startup it logs `Resume tracker  →  http://127.0.0.1:<port>/  (localhost only)`.
+4. Wait for it to come up. This prints `up` once the server is serving:
+   `curl --retry 30 --retry-connrefused --retry-delay 1 -sf http://127.0.0.1:<port>/api/dashboard >/dev/null && echo up`
+5. Give the user the URL: `http://127.0.0.1:<port>/`.
+6. To stop it: `kill $(lsof -ti tcp:<port> -sTCP:LISTEN)`. The background `make` then exits
+   with code 2 — expected after its child is killed, not a failure.
+
+Harmless on startup: a `VIRTUAL_ENV=... does not match the project environment` warning
+(the shell had another virtualenv active; uv ignores it). `uv sync` also installs pytest,
+the dev dependency used by `make test`.
+Verified 2026-10-11 by a fresh agent following only these steps from a clean clone.
 
 There is **no `BIND` option** and that is deliberate — see [Privacy](#privacy). Do not add one.
 Do not commit anything to a public remote. Do not paste the contents of `applications/`
